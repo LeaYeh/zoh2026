@@ -1,0 +1,24 @@
+# Large model weights
+models/pretrained/
+*.pth
+*.ckpt
+*.bin
+*.safetensors
+
+# Datasets
+hackathon/data/raw/
+hackathon/data/processed/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# OS
+.DS_Store
