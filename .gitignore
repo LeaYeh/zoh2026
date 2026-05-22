@@ -1,13 +1,17 @@
-# Large model weights
-models/pretrained/
+# Model weights and checkpoints
 *.pth
 *.ckpt
 *.bin
 *.safetensors
 
-# Datasets
-hackathon/data/raw/
-hackathon/data/processed/
+# Data (never commit raw or processed data)
+data/raw/
+data/processed/
+data/oof/
+data/folds.pkl
+
+# WandB
+wandb/
 
 # Python
 __pycache__/
