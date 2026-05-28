@@ -14,6 +14,9 @@ dependencies = [
     "transformers>=4.41",
     "accelerate>=0.30",
     "lightning>=2.2",
+    "peft>=0.11",
+    "gluonts>=0.15",
+    "orjson>=3.10",
     # Agent
     "langgraph>=0.1",
     "anthropic>=0.28",
