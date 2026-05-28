@@ -83,25 +83,25 @@
 # Verify environment
 uv run python scripts/verify_setup.py
 
-# Chronos zero-shot baseline (run this first)
-uv run python -c "
-from src.data.loader import fetch_and_save
-from src.forecasting.chronos_baseline import load_pipeline, run_zero_shot_eval
-import pandas as pd
-fetch_and_save('AAPL', '2020-01-01', '2024-12-31')
-df = pd.read_parquet('data/raw/AAPL.parquet')
-pipeline = load_pipeline()
-run_zero_shot_eval(pipeline, df, context_length=512, prediction_length=30, run_name='chronos-zeroshot-v0')
-"
-
-# Fine-tune PatchTST on A100
-bash scripts/train_patchtst.sh patchtst_v0
+# Run a single experiment (zero-shot or fine-tune, config-driven)
+uv run python src/train.py configs/exp/<name>.yaml
 
 # Run backtest
 bash scripts/run_backtest.sh AAPL chronos
 
 # Launch Gradio demo
 uv run python app/demo.py
+```
+
+### Example experiment sequence
+```bash
+# 1. Zero-shot baseline (run first, always)
+uv run python src/train.py configs/exp/chronos_zeroshot_v0.yaml
+
+# 2. LoRA fine-tune (after Gate 1 approval)
+uv run python src/train.py configs/exp/chronos_lora_v0.yaml
+
+# 3. Compare in wandb → keep if CRPS improves
 ```
 
 ---
@@ -160,11 +160,12 @@ Claude Code must `Read` the relevant skill file before executing any task in tha
 
 | Skill | Trigger | File |
 |-------|---------|------|
-| EDA | "analyze data", "explore data", "EDA" | `skills/01_eda.md` |
-| Validation setup | "validation", "time split", "backtest setup" | `skills/02_validation.md` |
-| Model training | "train", "baseline", "fine-tune", "Chronos", "PatchTST" | `skills/03_training.md` |
-| Agent design | "agent", "LangGraph", "tool calling", "decision loop" | `skills/04_agent.md` |
-| Evaluation | "backtest", "Sharpe", "evaluate", "ensemble", Hour 20+ | `skills/05_evaluation.md` |
+| EDA | "explore data", "EDA", data arrives | `skills/skill_eda.md` |
+| Zero-shot baseline | "run baseline", "zero-shot", Gate 1 setup | `skills/skill_baseline.md` |
+| LoRA fine-tune | "fine-tune", "LoRA", Gate 1 passed | `skills/skill_finetune.md` |
+| Evaluation & CV | "evaluate", "metrics", "CV", post-training | `skills/skill_eval.md` |
+| Decision agent | "agent", "LangGraph", Gate 2 passed | `skills/skill_decision_agent.md` |
+| Demo & deploy | "demo", "deploy", Gate 4 setup | `skills/skill_demo.md` |
 | Experiment review | after every training run or backtest | `skills/06_review_report.md` |
 
 ---
