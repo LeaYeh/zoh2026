@@ -31,23 +31,29 @@
 
 ```
 .
+├── README.md                          # competition day pipeline (start here)
 ├── app/demo.py                        # Gradio live demo
 ├── configs/
 │   ├── competition.yaml               # global: metric, seed, prediction_length
 │   └── exp/                           # one yaml per experiment
+│       ├── chronos_zeroshot_v0.yaml   # zero-shot baseline
+│       └── chronos_lora_v1.yaml       # LoRA fine-tune with experience replay
 ├── data/
 │   ├── raw/                           # immutable — never modify
 │   ├── processed/                     # feature-engineered data
-│   └── oof/                           # forecast predictions (for backtesting)
-├── notebooks/
-│   ├── 00_eda.ipynb
-│   └── 01_chronos_baseline.ipynb
+│   └── oof/                           # forecast predictions + LoRA checkpoints
+├── docs/
+│   └── architecture.html              # interactive pipeline diagram
 ├── scripts/
-│   ├── verify_setup.py
-│   ├── train_patchtst.sh
+│   ├── verify_setup.py                # pre-competition environment check
+│   ├── download_models.py             # cache Chronos T5-small/base
+│   ├── benchmark_financial.py         # CRPS+Sharpe+DirAcc vs yfinance baseline
+│   ├── benchmark_kaggle_gresearch.py  # G-Research Crypto Kaggle benchmark
 │   └── run_backtest.sh
 ├── skills/                            # Claude Code must read before each task
 ├── src/
+│   ├── train.py                       # unified entry point (zero-shot + LoRA)
+│   ├── evaluator.py                   # CRPS · MASE · coverage_80
 │   ├── agent/                         # LangGraph state machine + Claude tool calling
 │   │   ├── graph.py
 │   │   ├── nodes.py
@@ -56,9 +62,8 @@
 │   ├── data/loader.py                 # yfinance / competition data ingestion
 │   ├── evaluation/backtesting.py      # walk-forward backtest, Sharpe, drawdown
 │   ├── forecasting/
-│   │   ├── chronos_baseline.py        # zero-shot baseline
-│   │   └── patchtst_finetune.py       # A100 fine-tune
-│   └── utils/wandb_utils.py
+│   │   └── chronos_baseline.py        # zero-shot inference helper
+│   └── utils/wandb_utils.py           # best-run query + checkpoint loading
 └── pyproject.toml                     # uv managed deps
 ```
 
@@ -68,11 +73,11 @@
 
 - Python (`uv` for package management)
 - PyTorch + CUDA 12.4 + BF16 (`torch.set_float32_matmul_precision("high")` on A100)
-- **Forecasting**: `chronos-forecasting` (zero-shot baseline) + `PatchTST` via HuggingFace (fine-tuned on A100)
+- **Forecasting**: `chronos-forecasting` — zero-shot baseline + LoRA fine-tune via `peft`
+- **Fine-tuning**: LoRA r=8 [q,v], cosine LR scheduler, gradient clipping, experience replay (31 assets, 2015–2025)
 - **Agent**: `LangGraph` (state machine) + `anthropic` SDK (Claude tool calling)
-- **Training loop**: PyTorch Lightning (`precision="bf16-mixed"` on A100)
 - `wandb` for experiment tracking (sole source of truth — no exceptions)
-- **Demo**: Gradio (`app/demo.py`)
+- **Demo**: Gradio (`app/demo.py`) — auto-loads best WandB checkpoint at startup
 - Data: `yfinance` for pre-hackathon practice; competition data from Sybilion
 
 ---
@@ -99,7 +104,7 @@ uv run python app/demo.py
 uv run python src/train.py configs/exp/chronos_zeroshot_v0.yaml
 
 # 2. LoRA fine-tune (after Gate 1 approval)
-uv run python src/train.py configs/exp/chronos_lora_v0.yaml
+uv run python src/train.py configs/exp/chronos_lora_v1.yaml
 
 # 3. Compare in wandb → keep if CRPS improves
 ```
@@ -137,9 +142,9 @@ Gate 1 (Hour 2):  Is the baseline pipeline working end-to-end?
   → Human confirms: Chronos zero-shot runs, agent produces BUY/SELL/HOLD, Gradio demo loads
   → Fail → fix pipeline, do not proceed to fine-tuning
 
-Gate 2 (Hour 12): Is PatchTST fine-tune improving over Chronos baseline?
-  → Human confirms: backtest Sharpe of PatchTST > Chronos on held-out window
-  → Fail → investigate overfitting, try smaller model or more data
+Gate 2 (Hour 12): Is LoRA fine-tune improving over Chronos baseline?
+  → Human confirms: backtest Sharpe of LoRA > zero-shot on held-out window
+  → Fail → investigate forgetting, adjust replay ratio or reduce LoRA rank
 
 Gate 3 (Hour 24): Is the agent producing consistent decisions across scenarios?
   → Human confirms: Sharpe > 1.0 on ≥ 60% of backtest scenarios
@@ -167,6 +172,7 @@ Claude Code must `Read` the relevant skill file before executing any task in tha
 | Decision agent | "agent", "LangGraph", Gate 2 passed | `skills/skill_decision_agent.md` |
 | Demo & deploy | "demo", "deploy", Gate 4 setup | `skills/skill_demo.md` |
 | Experiment review | after every training run or backtest | `skills/06_review_report.md` |
+| **Time-series fine-tuning** | "fine-tune", "LoRA", "CRPS", "WQL", "catastrophic forgetting", "model merging", "SLERP", "TIES", "agent design", "inference pipeline" | `skills/time-series-finetuning/` |
 
 ---
 
