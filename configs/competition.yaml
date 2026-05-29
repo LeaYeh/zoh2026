@@ -1,0 +1,37 @@
+competition:
+  name: "Zero One Hack Vienna 2026"
+  track: 3
+  partner: "Sybilion"
+  metric: "sharpe_ratio"          # primary eval metric
+  n_folds: 5
+  seed: 42
+
+data:
+  symbols: []                     # fill after competition briefing
+  train_start: "2018-01-01"
+  train_end: "2024-12-31"
+  test_start: "2025-01-01"
+  prediction_length: 30           # days ahead to forecast
+  context_length: 512
+
+forecasting:
+  chronos_model: "amazon/chronos-t5-small"
+  patchtst_backbone: "namctin/patchtst_etth1"
+  batch_size: 32
+  max_epochs: 20
+  learning_rate: 1e-4
+  precision: "bf16-mixed"         # A100 optimal
+
+agent:
+  model: "claude-sonnet-4-6"
+  max_iterations: 10
+  tools:
+    - forecast
+    - get_market_context
+    - calculate_risk
+    - decide_action
+
+evaluation:
+  initial_capital: 100000
+  transaction_cost: 0.001
+  n_scenarios: 1000               # parallel backtesting scenarios
