@@ -1,37 +1,27 @@
 competition:
   name: "Zero One Hack Vienna 2026"
-  track: 3
-  partner: "Sybilion"
-  metric: "sharpe_ratio"          # primary eval metric
-  n_folds: 5
+  track: 1
+  partner: "Infineon"
+  metric: "top1_accuracy"         # primary eval metric (Task 1 Top-1)
   seed: 42
 
 data:
-  symbols: []                     # fill after competition briefing
-  train_start: "2018-01-01"
-  train_end: "2024-12-31"
-  test_start: "2025-01-01"
-  prediction_length: 30           # days ahead to forecast
-  context_length: 512
+  train_path: "data/raw/training_data/"
+  product_families: [IC, IGBT, MOSFET]
+  eval_valid_csv: "data/raw/eval_input_valid.csv"
+  eval_anomaly_csv: "data/raw/eval_input_anomaly.csv"
+  sequence_col: "SEQUENCE_ID"
+  step_col: "STEP"
+  min_length: 10
 
-forecasting:
-  chronos_model: "amazon/chronos-t5-small"
-  patchtst_backbone: "namctin/patchtst_etth1"
-  batch_size: 32
-  max_epochs: 20
-  learning_rate: 1e-4
-  precision: "bf16-mixed"         # A100 optimal
-
-agent:
-  model: "claude-sonnet-4-6"
-  max_iterations: 10
-  tools:
-    - forecast
-    - get_market_context
-    - calculate_risk
-    - decide_action
+model:
+  type: gpt2_scratch
+  max_seq_len: 256
+  n_embd: 256
+  n_layer: 6
+  n_head: 8
 
 evaluation:
-  initial_capital: 100000
-  transaction_cost: 0.001
-  n_scenarios: 1000               # parallel backtesting scenarios
+  top_k: [1, 3, 5]               # Task 1: next-step prediction
+  truncation_levels: [0.6, 0.8]  # Task 2: sequence completion
+  anomaly_threshold: null        # Task 3: null = median of scores

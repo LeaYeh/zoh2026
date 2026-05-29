@@ -30,8 +30,8 @@ def log_forecast_metrics(median: list, q10: list, q90: list, actuals: list | Non
 
 def get_best_run_name(
     project: str = "zoh2026",
-    metric: str = "eval/crps",
-    minimize: bool = True,
+    metric: str = "eval/top1",
+    minimize: bool = False,
 ) -> tuple[str | None, float | None]:
     """Query WandB for the finished run with the best eval metric.
 
@@ -57,9 +57,42 @@ def get_best_run_name(
         return None, None
 
 
+def load_best_model(
+    project: str = "zoh2026",
+    metric: str = "eval/top1",
+):
+    """Load the best Track-1 model (GPT-2 scratch) from a local checkpoint.
+
+    Returns (model, tokenizer, run_name, metric_value).
+    Returns (None, None, None, None) when no checkpoint is found.
+    """
+    import torch
+    from src.data.process_loader import ProcessStepTokenizer
+    from src.models.process_lm import load_model
+
+    run_name, score = get_best_run_name(project=project, metric=metric, minimize=False)
+    if run_name is None:
+        print("[wandb_utils] No finished runs found.")
+        return None, None, None, None
+
+    ckpt_path = CKPT_DIR / run_name
+    tok_path  = ckpt_path / "tokenizer.json"
+    model_path = ckpt_path / "model.pt"
+
+    if not (ckpt_path.exists() and tok_path.exists() and model_path.exists()):
+        print(f"[wandb_utils] Checkpoint for '{run_name}' not found locally.")
+        return None, None, run_name, score
+
+    tokenizer = ProcessStepTokenizer.load(tok_path)
+    model = load_model(str(ckpt_path), tokenizer)
+    model.eval()
+    print(f"[wandb_utils] Loaded model: {run_name}  ({metric}={score:.4f})")
+    return model, tokenizer, run_name, score
+
+
 def load_best_pipeline(
     project: str = "zoh2026",
-    metric: str = "eval/crps",
+    metric: str = "eval/top1",
     fallback_checkpoint: str = "amazon/chronos-t5-small",
 ):
     """Load the Chronos pipeline from the best WandB run's local checkpoint.

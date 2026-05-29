@@ -1,0 +1,27 @@
+run_name: gpt2_finetune_v1
+
+model:
+  type: gpt2_scratch
+  max_seq_len: 256
+  n_embd: 256
+  n_layer: 6
+  n_head: 8
+
+dataset:
+  name: process_csv
+  train_path: data/raw/training_data/
+  product_families: [IC, IGBT, MOSFET]
+  sequence_col: SEQUENCE_ID
+  step_col: STEP
+  val_ratio: 0.1
+  min_length: 10
+  seed: 42
+
+training:
+  steps: 3000
+  batch_size: 64
+  lr: 5.0e-4
+  warmup_steps: 300
+  grad_clip: 1.0
+  eval_every: 300
+  log_every: 10
