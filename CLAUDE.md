@@ -172,7 +172,7 @@ Claude Code must `Read` the relevant skill file before executing any task in tha
 | Decision agent | "agent", "LangGraph", Gate 2 passed | `skills/skill_decision_agent.md` |
 | Demo & deploy | "demo", "deploy", Gate 4 setup | `skills/skill_demo.md` |
 | Experiment review | after every training run or backtest | `skills/06_review_report.md` |
-| **Time-series fine-tuning** | "fine-tune", "LoRA", "CRPS", "WQL", "catastrophic forgetting", "model merging", "SLERP", "TIES", "agent design", "inference pipeline" | `skills/time-series-finetuning/` |
+| **Time-series fine-tuning** | "fine-tune", "LoRA", "CRPS", "WQL", "Chronos", "catastrophic forgetting", "model merging", "SLERP", "TIES", "DARE", "agent design", "inference pipeline" | `skills/time-series-finetuning/` |
 
 ---
 
