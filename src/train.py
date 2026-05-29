@@ -9,6 +9,7 @@ import sys
 import os
 import copy
 import json
+import math
 from pathlib import Path
 
 import numpy as np
@@ -104,6 +105,36 @@ def predict_series(
         return forecast[0].numpy()  # (n_samples, pred_len)
 
     raise NotImplementedError(f"predict_series not implemented for {kind}")
+
+
+def _predict_batched(
+    pipeline,
+    context_arrays: list[np.ndarray],
+    prediction_length: int,
+    num_samples: int = 20,
+    batch_size: int = 16,
+) -> list[np.ndarray]:
+    """Run Chronos prediction on a list of context arrays in batches.
+
+    Returns a list of (num_samples, prediction_length) arrays, one per input.
+    Batching avoids per-series Python loop overhead and improves GPU utilisation.
+    """
+    results: list[np.ndarray] = []
+    pipeline.model.eval()
+    with torch.no_grad():
+        for start in range(0, len(context_arrays), batch_size):
+            batch = [
+                torch.tensor(arr, dtype=torch.float32)
+                for arr in context_arrays[start : start + batch_size]
+            ]
+            # pipeline.predict accepts list[1D Tensor] → (batch, num_samples, pred_len)
+            preds = pipeline.predict(
+                batch, prediction_length, num_samples=num_samples,
+                limit_prediction_length=False,
+            )
+            for i in range(len(batch)):
+                results.append(preds[i].numpy())
+    return results
 
 
 def load_lora_checkpoint(run_name: str, base_checkpoint: str = "amazon/chronos-t5-small"):
@@ -212,17 +243,14 @@ def _eval_val_crps(
     num_samples: int,
 ) -> float:
     from src.evaluator import evaluate, naive_scale_from_series
-    pipeline.model.eval()
-    all_preds, all_truth, all_scales = [], [], []
-    with torch.no_grad():
-        for ctx_arr, tgt_arr in zip(val_ctx, val_tgt):
-            ctx_t = torch.tensor(ctx_arr, dtype=torch.float32)
-            preds = pipeline.predict(ctx_t, pred_len, num_samples=num_samples)
-            all_preds.append(preds[0].numpy())
-            all_truth.append(tgt_arr)
-            all_scales.append(naive_scale_from_series(ctx_arr))
+    batched_preds = _predict_batched(pipeline, val_ctx, pred_len, num_samples)
     pipeline.model.train()
-    metrics = evaluate(np.stack(all_preds), np.stack(all_truth), np.array(all_scales))
+    all_scales = [naive_scale_from_series(ctx) for ctx in val_ctx]
+    metrics = evaluate(
+        np.stack(batched_preds),
+        np.stack(val_tgt),
+        np.array(all_scales),
+    )
     return metrics.crps
 
 
@@ -258,9 +286,17 @@ def finetune_chronos_lora(
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.set_float32_matmul_precision("high")
 
-    optimizer = torch.optim.AdamW(
-        [p for p in model.model.model.parameters() if p.requires_grad], lr=lr
-    )
+    trainable_params = [p for p in model.model.model.parameters() if p.requires_grad]
+    optimizer = torch.optim.AdamW(trainable_params, lr=lr)
+
+    # Cosine LR with linear warmup: ramp up for warmup_steps, decay to lr*0.01
+    warmup_steps = cfg["training"].get("warmup_steps", max(1, max_steps // 10))
+    def _lr_lambda(step: int) -> float:
+        if step < warmup_steps:
+            return float(step) / float(max(1, warmup_steps))
+        progress = float(step - warmup_steps) / float(max(1, max_steps - warmup_steps))
+        return max(0.01, 0.5 * (1.0 + math.cos(math.pi * progress)))
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, _lr_lambda)
 
     rng = np.random.default_rng(42)
     model.train()
@@ -302,10 +338,16 @@ def finetune_chronos_lora(
         loss = out.loss
         optimizer.zero_grad()
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(trainable_params, 1.0)
         optimizer.step()
+        scheduler.step()
 
         if step % 10 == 0:
-            wandb.log({"train/loss": loss.item(), "step": step})
+            wandb.log({
+                "train/loss": loss.item(),
+                "train/lr": scheduler.get_last_lr()[0],
+                "step": step,
+            })
             print(f"  step {step:4d}  loss={loss.item():.4f}")
 
         # early stopping check
@@ -387,23 +429,22 @@ def main(config_path: str) -> None:
     elif method == "none":
         print("Skipping fine-tune (zero-shot).")
 
-    # 4. predict + evaluate
+    # 4. predict + evaluate (batched for speed)
     print("Evaluating...")
     from src.evaluator import evaluate, naive_scale_from_series
 
-    all_preds, all_truth, all_scales = [], [], []
     context_len = cfg["model"].get("context_length", 512)
     num_samples = cfg["model"].get("num_samples", 20)
+    infer_batch  = cfg.get("inference", {}).get("batch_size", 16)
 
-    for i, (train_s, test_s) in enumerate(zip(train_series, test_series)):
-        ctx = train_s[-context_len:]
-        if kind == "chronos":
-            preds = predict_series(model_tuple, ctx, pred_len, num_samples)
-        else:
-            continue
-        all_preds.append(preds)
-        all_truth.append(test_s[:pred_len])
-        all_scales.append(naive_scale_from_series(train_s))
+    if kind == "chronos":
+        pipeline = model_tuple[1]
+        ctx_arrays  = [s[-context_len:] for s in train_series]
+        all_preds   = _predict_batched(pipeline, ctx_arrays, pred_len, num_samples, infer_batch)
+        all_truth   = [s[:pred_len] for s in test_series]
+        all_scales  = [naive_scale_from_series(s) for s in train_series]
+    else:
+        all_preds, all_truth, all_scales = [], [], []
 
     if not all_preds:
         print("No predictions produced — check model/data config.")

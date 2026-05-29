@@ -21,6 +21,7 @@ training:
   max_steps: 1000
   batch_size: 32            # A100; use 4 on CPU
   learning_rate: 1.0e-4
+  warmup_steps: 100         # linear warmup then cosine decay to lr*0.01
   early_stop_patience: 3    # stop if val CRPS doesn't improve for 3 evals
   eval_every: 100           # eval val CRPS every N steps
   precision: bf16-mixed     # A100 only; remove on CPU
@@ -69,3 +70,6 @@ training:
       - "EURUSD=X"          # EUR/USD
       - "JPY=X"             # USD/JPY — risk-off indicator
       - "GBPUSD=X"          # GBP/USD — Brexit volatility 2016/2019
+
+inference:
+  batch_size: 16            # series per batch during eval; A100 can handle 32+
