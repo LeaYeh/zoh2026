@@ -54,7 +54,7 @@ def forecast_node(state: AgentState, pipeline: Any = None) -> AgentState:
     import torch
     ctx = torch.tensor(prices[-512:], dtype=torch.float32)
     pred_len = state["market_context"].get("pred_len", 30)
-    samples = pipeline.predict(ctx, pred_len, num_samples=20)
+    samples = pipeline.predict([ctx], pred_len, num_samples=20, limit_prediction_length=False)
     draws = samples[0].numpy()  # (n_samples, pred_len)
 
     state["forecast"] = {
