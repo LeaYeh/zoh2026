@@ -1,12 +1,13 @@
 """Unified training entry point.
 
 Usage:
-    uv run python src/train.py configs/exp/patchtst_electricity_v0.yaml
+    uv run python src/train.py configs/exp/chronos_lora_v1.yaml
 """
 
 from __future__ import annotations
 import sys
 import os
+import copy
 import json
 from pathlib import Path
 
@@ -83,11 +84,6 @@ def load_model(model_cfg: dict):
             pipeline.model.model.print_trainable_parameters()
         return ("chronos", pipeline)
 
-    if name == "patchtst":
-        import importlib
-        ft = importlib.import_module("src.forecasting.patchtst_finetune")
-        return ("patchtst", ft)
-
     raise ValueError(f"Unknown model: {name}")
 
 
@@ -110,23 +106,157 @@ def predict_series(
     raise NotImplementedError(f"predict_series not implemented for {kind}")
 
 
-# ── training loop (chronos LoRA / PatchTST) ──────────────────────────────────
+def load_lora_checkpoint(run_name: str, base_checkpoint: str = "amazon/chronos-t5-small"):
+    """Reload a saved LoRA adapter into a fresh Chronos pipeline."""
+    from chronos import ChronosPipeline
+    from peft import PeftModel
+    ckpt_path = CKPT_DIR / run_name
+    if not ckpt_path.exists():
+        raise FileNotFoundError(f"Checkpoint not found: {ckpt_path}")
+    pipeline = ChronosPipeline.from_pretrained(base_checkpoint, dtype=torch.float32, device_map="cpu")
+    pipeline.model.model = PeftModel.from_pretrained(pipeline.model.model, str(ckpt_path))
+    pipeline.model.model.eval()
+    return pipeline
+
+
+# ── financial experience replay ──────────────────────────────────────────────
+
+_REPLAY_SYMBOLS_DEFAULT = [
+    # US equity indices
+    "^GSPC", "^IXIC", "^DJI", "^FTSE", "^N225",
+    # Volatility / bear-market regime anchors
+    "^VIX", "SQQQ", "SH",
+    # Equity ETFs
+    "QQQ", "SPY", "IWM",
+    # Tech
+    "AAPL", "MSFT", "GOOGL", "NVDA", "BABA", "TSM",
+    # Commodities + bonds
+    "GC=F", "CL=F", "TLT", "GLD",
+    # Crypto — covers 2017 AND 2021 bull markets
+    "BTC-USD", "ETH-USD", "LTC-USD", "XRP-USD",
+    "ADA-USD", "DOGE-USD", "LINK-USD",
+    # Forex
+    "EURUSD=X", "JPY=X", "GBPUSD=X",
+]
+
+# Extended date range to cover 2017 crypto bull + 2015 China correction
+_REPLAY_START_DEFAULT = "2015-01-01"
+_REPLAY_END_DEFAULT   = "2025-06-01"
+
+
+def _load_financial_replay(
+    symbols: list[str] | None = None,
+    start: str = _REPLAY_START_DEFAULT,
+    end: str = _REPLAY_END_DEFAULT,
+    min_length: int = 600,
+) -> list[np.ndarray]:
+    """Download daily close prices for a diverse set of financial assets.
+
+    Returns raw price series (float32) for use as experience replay data.
+    Silently skips symbols that fail to download.
+    """
+    try:
+        import yfinance as yf
+    except ImportError:
+        print("  [replay] yfinance not installed — skipping financial replay")
+        return []
+
+    symbols = symbols or _REPLAY_SYMBOLS_DEFAULT
+    series_list: list[np.ndarray] = []
+    for sym in symbols:
+        try:
+            df = yf.download(sym, start=start, end=end, auto_adjust=True, progress=False)
+            if df.empty:
+                continue
+            col = "Close" if "Close" in df.columns else df.columns[0]
+            prices = df[col].dropna().values.astype(np.float32)
+            if len(prices) >= min_length:
+                series_list.append(prices)
+        except Exception:
+            pass
+    print(f"  [replay] loaded {len(series_list)}/{len(symbols)} financial series")
+    return series_list
+
+
+# ── val split + eval helpers ─────────────────────────────────────────────────
+
+def _split_val(
+    train_series: list[np.ndarray],
+    pred_len: int,
+    context_len: int,
+) -> tuple[list[np.ndarray], list[np.ndarray], list[np.ndarray]]:
+    """
+    Split training series into finetune / val sets.
+
+    Layout per series:
+      [======== finetune ========|== gap ==|== val target ==]
+                                 pred_len     pred_len
+    gap prevents any overlap between finetune context and val target.
+    """
+    finetune, val_ctx, val_tgt = [], [], []
+    needed = context_len + 2 * pred_len
+    for s in train_series:
+        if len(s) < needed:
+            continue
+        finetune.append(s[: -(2 * pred_len)])
+        val_ctx.append(s[-(context_len + pred_len) : -pred_len])
+        val_tgt.append(s[-pred_len:])
+    return finetune, val_ctx, val_tgt
+
+
+def _eval_val_crps(
+    pipeline,
+    val_ctx: list[np.ndarray],
+    val_tgt: list[np.ndarray],
+    pred_len: int,
+    num_samples: int,
+) -> float:
+    from src.evaluator import evaluate, naive_scale_from_series
+    pipeline.model.eval()
+    all_preds, all_truth, all_scales = [], [], []
+    with torch.no_grad():
+        for ctx_arr, tgt_arr in zip(val_ctx, val_tgt):
+            ctx_t = torch.tensor(ctx_arr, dtype=torch.float32)
+            preds = pipeline.predict(ctx_t, pred_len, num_samples=num_samples)
+            all_preds.append(preds[0].numpy())
+            all_truth.append(tgt_arr)
+            all_scales.append(naive_scale_from_series(ctx_arr))
+    pipeline.model.train()
+    metrics = evaluate(np.stack(all_preds), np.stack(all_truth), np.array(all_scales))
+    return metrics.crps
+
+
+# ── training loop ─────────────────────────────────────────────────────────────
 
 def finetune_chronos_lora(
     pipeline,
     train_series: list[np.ndarray],
+    val_ctx: list[np.ndarray],
+    val_tgt: list[np.ndarray],
     cfg: dict,
+    replay_series: list[np.ndarray] | None = None,
 ) -> None:
-    """Simple next-step quantile loss fine-tune for Chronos with LoRA."""
-    from chronos import ChronosPipeline
+    """LoRA fine-tune with early stopping on val CRPS. Restores best weights in-place.
 
+    replay_series: optional financial price series mixed into batches at replay_ratio.
+    Val CRPS is always evaluated on competition data only (not replay).
+    """
     model = pipeline.model
     context_len = cfg["model"].get("context_length", 512)
-    # Use the tokenizer's configured prediction_length for training batches
     pred_len = pipeline.tokenizer.config.prediction_length
     lr = cfg["training"].get("learning_rate", 1e-4)
-    max_steps = cfg["training"].get("max_steps", 100)
+    max_steps = cfg["training"].get("max_steps", 1000)
     batch_size = cfg["training"].get("batch_size", 8)
+    patience = cfg["training"].get("early_stop_patience", 3)
+    eval_every = cfg["training"].get("eval_every", 100)
+    num_samples = cfg["model"].get("num_samples", 20)
+    replay_cfg = cfg["training"].get("experience_replay", {})
+    replay_ratio = replay_cfg.get("ratio", 0.0) if replay_series else 0.0
+
+    # A100: enable TF32 + bf16 if requested
+    if cfg["training"].get("precision") == "bf16-mixed" and torch.cuda.is_available():
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.set_float32_matmul_precision("high")
 
     optimizer = torch.optim.AdamW(
         [p for p in model.model.model.parameters() if p.requires_grad], lr=lr
@@ -134,13 +264,21 @@ def finetune_chronos_lora(
 
     rng = np.random.default_rng(42)
     model.train()
+
+    best_val_crps = float("inf")
+    best_lora_state: dict | None = None
+    patience_counter = 0
     step = 0
 
     while step < max_steps:
-        # sample a random batch of windows
         batch_ctx, batch_tgt = [], []
         for _ in range(batch_size):
-            s = rng.choice(train_series)
+            # experience replay: sample from financial series with probability replay_ratio
+            if replay_series and rng.random() < replay_ratio:
+                pool = replay_series
+            else:
+                pool = train_series
+            s = pool[rng.integers(0, len(pool))]
             if len(s) < context_len + pred_len:
                 continue
             i = rng.integers(0, len(s) - context_len - pred_len)
@@ -153,11 +291,9 @@ def finetune_chronos_lora(
         ctx_t = torch.tensor(np.array(batch_ctx), dtype=torch.float32)
         tgt_t = torch.tensor(np.array(batch_tgt), dtype=torch.float32)
 
-        # context_input_transform returns (input_ids, attention_mask, scale)
         ctx_input_ids, ctx_attn_mask, scale = pipeline.tokenizer.context_input_transform(ctx_t)
         tgt_input_ids, _ = pipeline.tokenizer.label_input_transform(tgt_t, scale=scale)
 
-        # Call inner T5 directly (LoRA is applied there)
         out = model.model.model(
             input_ids=ctx_input_ids,
             attention_mask=ctx_attn_mask,
@@ -172,7 +308,30 @@ def finetune_chronos_lora(
             wandb.log({"train/loss": loss.item(), "step": step})
             print(f"  step {step:4d}  loss={loss.item():.4f}")
 
+        # early stopping check
+        if step > 0 and step % eval_every == 0 and val_ctx:
+            val_crps = _eval_val_crps(pipeline, val_ctx, val_tgt, pred_len, num_samples)
+            wandb.log({"val/crps": val_crps, "step": step})
+            print(f"           val_crps={val_crps:.4f}  best={best_val_crps:.4f}")
+            if val_crps < best_val_crps:
+                best_val_crps = val_crps
+                patience_counter = 0
+                # snapshot LoRA weights in memory
+                best_lora_state = copy.deepcopy(
+                    {k: v.cpu() for k, v in model.model.model.state_dict().items()}
+                )
+            else:
+                patience_counter += 1
+                if patience_counter >= patience:
+                    print(f"  Early stopping at step {step} (patience={patience} exhausted)")
+                    break
+
         step += 1
+
+    # restore best weights
+    if best_lora_state is not None:
+        model.model.model.load_state_dict(best_lora_state)
+        print(f"  Restored best checkpoint (val_crps={best_val_crps:.4f})")
 
 
 # ── main ─────────────────────────────────────────────────────────────────────
@@ -205,11 +364,24 @@ def main(config_path: str) -> None:
     # 3. fine-tune (if method != none)
     method = cfg["model"].get("finetune", {}).get("method", "none")
     if method != "none" and kind == "chronos":
-        print(f"Fine-tuning ({method})...")
-        finetune_chronos_lora(model_tuple[1], train_series, cfg)
+        context_len = cfg["model"].get("context_length", 512)
+        finetune_series, val_ctx, val_tgt = _split_val(train_series, pred_len, context_len)
+        print(f"Fine-tuning ({method})...  finetune={len(finetune_series)} series, val={len(val_ctx)} series")
 
-        # save LoRA weights
-        # Save LoRA adapter weights from the inner T5 model
+        # load financial experience replay if enabled
+        replay_series: list[np.ndarray] = []
+        replay_cfg = cfg["training"].get("experience_replay", {})
+        if replay_cfg.get("enabled", False):
+            print("Loading financial replay data...")
+            replay_series = _load_financial_replay(
+                symbols=replay_cfg.get("symbols"),
+                start=replay_cfg.get("start", "2018-01-01"),
+                end=replay_cfg.get("end", "2025-01-01"),
+                min_length=context_len + pred_len,
+            )
+            wandb.config.update({"replay_n_series": len(replay_series)}, allow_val_change=True)
+
+        finetune_chronos_lora(model_tuple[1], finetune_series, val_ctx, val_tgt, cfg, replay_series or None)
         model_tuple[1].model.model.save_pretrained(str(CKPT_DIR / run_name))
         print(f"  Checkpoint saved → {CKPT_DIR / run_name}")
     elif method == "none":
