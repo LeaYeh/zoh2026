@@ -66,13 +66,14 @@ def forecast_node(state: AgentState, pipeline: Any = None) -> AgentState:
 
 
 def risk_node(state: AgentState) -> AgentState:
-    """Compute risk metrics from forecast."""
+    """Compute risk metrics and volatility regime from forecast + price history."""
     f = state["forecast"]
     risk = calculate_risk(
         forecast_median=f.get("median", []),
         forecast_q10=f.get("q10", []),
         forecast_q90=f.get("q90", []),
         current_price=state["current_price"],
+        price_history=state["market_context"].get("prices"),
     )
     state["risk"] = risk
     return state
@@ -106,6 +107,7 @@ def fallback_decision_node(state: AgentState) -> AgentState:
         expected_return=r.get("expected_return", 0),
         downside_risk=r.get("downside_risk", 0),
         ci_width=r.get("ci_width", 1),
+        vol_regime=r.get("vol_regime", "unknown"),
     )
     state["decision"] = result
     return state

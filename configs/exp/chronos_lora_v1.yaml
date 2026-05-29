@@ -1,8 +1,13 @@
 run_name: chronos_lora_v1
 
 dataset:
-  name: competition         # fill after briefing
+  name: csv                 # generic CSV loader — works for competition data
+  path: data/processed/competition.csv   # fill after briefing
+  price_col: close          # column name for price/target (adjust after EDA)
+  timestamp_col: timestamp  # optional — used for sorting
+  series_col: symbol        # set to null for single-series files
   prediction_length: 30     # fill after briefing
+  min_length: 100
 
 model:
   name: chronos

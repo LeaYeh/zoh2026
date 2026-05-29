@@ -53,7 +53,76 @@ def load_dataset(dataset_cfg: dict) -> tuple[list[np.ndarray], list[np.ndarray]]
             test_list.append(v[-pred_len:])
         return train_list, test_list
 
+    if name == "csv":
+        return _load_csv_dataset(dataset_cfg)
+
     raise ValueError(f"Unknown dataset: {name}")
+
+
+def _load_csv_dataset(
+    dataset_cfg: dict,
+) -> tuple[list[np.ndarray], list[np.ndarray]]:
+    """Generic CSV loader for competition data.
+
+    Accepts any CSV with a price column and optional timestamp column.
+    Each unique value in `series_col` becomes one time series (set to None
+    for single-series files). The last `prediction_length` rows of each
+    series become the test target; the rest becomes train context.
+
+    Config keys:
+      path          str   path to CSV file (required)
+      price_col     str   column name for price/target values (default: "close")
+      timestamp_col str   column for timestamps, used only for sorting (default: None)
+      series_col    str   column that identifies separate series, e.g. "symbol"
+                          (default: None → treat whole file as one series)
+      prediction_length int  number of steps to hold out as test target
+      min_length    int   drop series shorter than this (default: 100)
+    """
+    import pandas as pd
+
+    path          = dataset_cfg["path"]
+    price_col     = dataset_cfg.get("price_col", "close")
+    timestamp_col = dataset_cfg.get("timestamp_col", None)
+    series_col    = dataset_cfg.get("series_col", None)
+    pred_len      = dataset_cfg["prediction_length"]
+    min_length    = dataset_cfg.get("min_length", 100)
+
+    df = pd.read_csv(path)
+
+    # Normalise column names to lowercase for robustness
+    df.columns = [c.lower().strip() for c in df.columns]
+    price_col     = price_col.lower().strip()
+    if timestamp_col:
+        timestamp_col = timestamp_col.lower().strip()
+    if series_col:
+        series_col = series_col.lower().strip()
+
+    if timestamp_col and timestamp_col in df.columns:
+        df = df.sort_values(timestamp_col)
+
+    def _extract(sub: pd.DataFrame) -> np.ndarray:
+        return sub[price_col].dropna().values.astype(np.float32)
+
+    if series_col and series_col in df.columns:
+        groups = [g for _, g in df.groupby(series_col, sort=False)]
+    else:
+        groups = [df]
+
+    train_list, test_list = [], []
+    for g in groups:
+        v = _extract(g)
+        if len(v) < min_length + pred_len:
+            continue
+        train_list.append(v[:-pred_len])
+        test_list.append(v[-pred_len:])
+
+    if not train_list:
+        raise ValueError(
+            f"No series loaded from {path} — check price_col='{price_col}', "
+            f"series_col='{series_col}', min_length={min_length}"
+        )
+    print(f"  [csv loader] {len(train_list)} series from {path}")
+    return train_list, test_list
 
 
 # ── model loading + optional LoRA ────────────────────────────────────────────
