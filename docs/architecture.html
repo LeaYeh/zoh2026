@@ -1,550 +1,351 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>ZOH 2026 — Track 03 Architecture</title>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js" integrity="sha384-en/ztfPSRkGfME4KIm05joYXynqzUgbsG5nMrj/xEFAHXkeZfO3yMK8QQ+mP7p1/" crossorigin="anonymous"></script>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{background:#020617;color:#e2e8f0;font-family:'JetBrains Mono',monospace;padding:24px}
-.container{max-width:1200px;margin:0 auto}
-.header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
-.header h1{font-size:18px;font-weight:700;color:#f8fafc}
-.header h1 span{color:#22d3ee}
-.subtitle{font-size:11px;color:#64748b;margin-top:4px}
-.pulse{width:8px;height:8px;background:#22d3ee;border-radius:50%;margin-right:10px;animation:pulse 2s infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
-.hflex{display:flex;align-items:center}
-.toolbar{position:relative;display:inline-block}
-.toolbar-toggle{background:#1e293b;border:1px solid #334155;color:#94a3b8;padding:6px 10px;border-radius:6px;cursor:pointer;font-family:inherit;font-size:12px}
-.toolbar-toggle:hover{background:#334155}
-.toolbar-actions{display:none;position:absolute;right:0;top:36px;background:#1e293b;border:1px solid #334155;border-radius:8px;padding:6px;gap:4px;flex-direction:column;z-index:10;white-space:nowrap}
-.toolbar-actions.open{display:flex}
-.toolbar-actions button{background:#0f172a;border:1px solid #334155;color:#94a3b8;padding:5px 10px;border-radius:4px;cursor:pointer;font-family:inherit;font-size:11px;text-align:left}
-.toolbar-actions button:hover{background:#1e293b;color:#e2e8f0}
-@media print{.toolbar{display:none!important}}
-.diagram-card{background:#0f172a;border:1px solid #1e293b;border-radius:12px;padding:20px;margin-bottom:20px}
-.cards-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px}
-.card{background:#0f172a;border:1px solid #1e293b;border-radius:8px;padding:16px}
-.card-header{display:flex;align-items:center;margin-bottom:10px}
-.card-dot{width:8px;height:8px;border-radius:50%;margin-right:8px}
-.card-dot.cyan{background:#22d3ee}
-.card-dot.emerald{background:#34d399}
-.card-dot.violet{background:#a78bfa}
-.card h3{font-size:11px;font-weight:600;color:#e2e8f0}
-.card ul{list-style:none;font-size:10px;color:#94a3b8;line-height:1.9}
-.ok{color:#34d399!important}
-.warn{color:#fbbf24!important}
-.bug{color:#fb7185!important}
-.opt-panel{background:#0f172a;border:1px solid #1e293b;border-radius:12px;padding:20px;margin-bottom:20px}
-.opt-panel h2{font-size:13px;font-weight:600;color:#f8fafc;margin-bottom:14px;border-bottom:1px solid #1e293b;padding-bottom:8px}
-.opt-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.opt-section h3{font-size:11px;font-weight:600;margin-bottom:8px;padding:4px 0;border-bottom:1px solid #1e293b}
-.opt-section h3.bug-h{color:#fb7185}
-.opt-section h3.perf-h{color:#fbbf24}
-.opt-section h3.arch-h{color:#a78bfa}
-.opt-item{font-size:10px;color:#94a3b8;padding:7px 10px;border-radius:4px;margin-bottom:5px;border-left:3px solid;line-height:1.6}
-.opt-item.bug{border-color:#fb7185;background:rgba(136,19,55,0.15)}
-.opt-item.perf{border-color:#fbbf24;background:rgba(120,53,15,0.15)}
-.opt-item.arch{border-color:#a78bfa;background:rgba(76,29,149,0.15)}
-.opt-item strong{color:#e2e8f0;display:block;margin-bottom:2px}
-.opt-item code{color:#fbbf24;font-size:9px}
-.badge{display:inline-block;padding:1px 6px;border-radius:3px;font-size:9px;margin-right:5px;font-weight:700}
-.badge.fix{background:#fb7185;color:#000}
-.badge.opt{background:#fbbf24;color:#000}
-.badge.stub{background:#a78bfa;color:#000}
-.footer{font-size:9px;color:#334155;text-align:center;margin-top:12px}
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ZOH 2026 · Track 1 — Industrial AI Architecture</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js" integrity="sha384-en/ztfPSRkGfME4KIm05joYXynqzUgbsG5nMrj/xEFAHXkeZfO3yMK8QQ+mP7p1/" crossorigin="anonymous"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'JetBrains Mono', monospace; background: #020617; min-height: 100vh; padding: 2rem; color: white; }
+    .container { max-width: 1280px; margin: 0 auto; }
+    .header { margin-bottom: 2rem; }
+    .header-row { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.5rem; }
+    .pulse-dot { width: 12px; height: 12px; background: #22d3ee; border-radius: 50%; animation: pulse 2s infinite; flex-shrink: 0; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.025em; }
+    .subtitle { color: #94a3b8; font-size: 0.875rem; margin-left: 1.75rem; }
+    .diagram-container { background: rgba(15, 23, 42, 0.5); border-radius: 1rem; border: 1px solid #1e293b; padding: 1.5rem; overflow-x: auto; }
+    svg { width: 100%; min-width: 1100px; display: block; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; margin-top: 2rem; }
+    .card { background: rgba(15, 23, 42, 0.5); border-radius: 0.75rem; border: 1px solid #1e293b; padding: 1.25rem; }
+    .card-header { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.75rem; }
+    .card-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .card-dot.cyan { background: #22d3ee; }
+    .card-dot.emerald { background: #34d399; }
+    .card-dot.violet { background: #a78bfa; }
+    .card-dot.amber { background: #fbbf24; }
+    .card-dot.rose { background: #fb7185; }
+    .card h3 { font-size: 0.875rem; font-weight: 600; }
+    .card ul { list-style: none; color: #94a3b8; font-size: 0.75rem; }
+    .card li { margin-bottom: 0.375rem; }
+    .footer { text-align: center; margin-top: 1.5rem; color: #475569; font-size: 0.75rem; }
+    .toolbar { display: flex; gap: 0.5rem; margin-left: auto; flex-shrink: 0; align-items: center; }
+    .toolbar-toggle { background: transparent; border: none; color: #475569; cursor: pointer; font-size: 1.25rem; line-height: 1; padding: 0.25rem 0.5rem; border-radius: 0.375rem; transition: color 0.2s, background 0.2s; }
+    .toolbar-toggle:hover { color: #94a3b8; background: rgba(30, 41, 59, 0.5); }
+    .toolbar-actions { display: none; gap: 0.5rem; }
+    .toolbar.expanded .toolbar-actions { display: flex; }
+    .toolbar-actions button { background: rgba(30, 41, 59, 0.8); border: 1px solid #334155; color: #94a3b8; padding: 0.375rem 0.75rem; border-radius: 0.375rem; font-family: inherit; font-size: 0.75rem; cursor: pointer; transition: all 0.2s; white-space: nowrap; }
+    .toolbar-actions button:hover { background: rgba(51, 65, 85, 0.8); color: white; border-color: #475569; }
+    @media print { body { background: #020617; padding: 1rem; } .toolbar { display: none !important; } }
+  </style>
 </head>
 <body>
 <div class="container" id="report-container">
 
-<div class="header">
-  <div>
-    <div class="hflex">
-      <div class="pulse"></div>
-      <h1>ZOH 2026 · Track 03 — <span>Trading Decision Agent</span></h1>
-    </div>
-    <div class="subtitle">Architecture · Training Flow · Optimization Targets &nbsp;|&nbsp; Chronos T5-small + LoRA + LangGraph + Gradio &nbsp;|&nbsp; 2026-05-29</div>
-  </div>
-  <div class="toolbar">
-    <button class="toolbar-toggle" onclick="this.nextElementSibling.classList.toggle('open')">⋯</button>
-    <div class="toolbar-actions">
-      <button onclick="copyAsImage()">📋 Copy PNG</button>
-      <button onclick="downloadPNG()">🖼️ Download PNG</button>
-      <button onclick="downloadPDF()">📄 Download PDF</button>
-    </div>
-  </div>
-</div>
-
-<!-- Main SVG Architecture Diagram -->
-<div class="diagram-card">
-<svg viewBox="0 0 1140 830" xmlns="http://www.w3.org/2000/svg" style="width:100%;font-family:'JetBrains Mono',monospace">
-<defs>
-  <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-    <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
-  </pattern>
-  <marker id="arr"       markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#475569"/></marker>
-  <marker id="arr-cyan"  markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#22d3ee"/></marker>
-  <marker id="arr-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#34d399"/></marker>
-  <marker id="arr-amber" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#fbbf24"/></marker>
-  <marker id="arr-orange"markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#fb923c"/></marker>
-  <marker id="arr-rose"  markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0,10 3.5,0 7" fill="#fb7185"/></marker>
-</defs>
-<rect width="1140" height="830" fill="url(#grid)"/>
-
-<!-- ── Layer labels ── -->
-<text x="13" y="100"  fill="#1e293b" font-size="9" writing-mode="tb">DATA</text>
-<text x="13" y="235"  fill="#1e293b" font-size="9" writing-mode="tb">TRAIN</text>
-<text x="13" y="435"  fill="#1e293b" font-size="9" writing-mode="tb">AGENT</text>
-<text x="13" y="625"  fill="#1e293b" font-size="9" writing-mode="tb">EVAL</text>
-<text x="13" y="760"  fill="#1e293b" font-size="9" writing-mode="tb">DEMO</text>
-
-<!-- ══════════════════════ DATA LAYER ══════════════════════ -->
-<!-- Competition data (TBD) -->
-<rect x="28" y="28" width="155" height="75" rx="6" fill="#0f172a"/>
-<rect x="28" y="28" width="155" height="75" rx="6" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1.5" stroke-dasharray="5,3"/>
-<text x="105" y="50"  fill="#fbbf24" font-size="10" font-weight="600" text-anchor="middle">Competition Data</text>
-<text x="105" y="65"  fill="#94a3b8" font-size="8"  text-anchor="middle">Sybilion (TBD)</text>
-<text x="105" y="78"  fill="#64748b" font-size="8"  text-anchor="middle">price · volume · features</text>
-<text x="105" y="93"  fill="#fbbf24" font-size="7"  text-anchor="middle">⚡ fill after briefing</text>
-
-<!-- yfinance -->
-<rect x="200" y="28" width="145" height="75" rx="6" fill="#0f172a"/>
-<rect x="200" y="28" width="145" height="75" rx="6" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.5"/>
-<text x="272" y="50"  fill="#e2e8f0" font-size="10" font-weight="600" text-anchor="middle">yfinance</text>
-<text x="272" y="65"  fill="#94a3b8" font-size="8"  text-anchor="middle">daily OHLCV · 15 assets</text>
-<text x="272" y="78"  fill="#64748b" font-size="8"  text-anchor="middle">2018–2025 · practice</text>
-<text x="272" y="93"  fill="#34d399" font-size="7"  text-anchor="middle">✓ benchmark verified</text>
-
-<!-- G-Research Kaggle -->
-<rect x="362" y="28" width="155" height="75" rx="6" fill="#0f172a"/>
-<rect x="362" y="28" width="155" height="75" rx="6" fill="rgba(30,41,59,0.5)" stroke="#94a3b8" stroke-width="1.5"/>
-<text x="439" y="50"  fill="#e2e8f0" font-size="10" font-weight="600" text-anchor="middle">G-Research Kaggle</text>
-<text x="439" y="65"  fill="#94a3b8" font-size="8"  text-anchor="middle">14 crypto · min OHLCV</text>
-<text x="439" y="78"  fill="#64748b" font-size="8"  text-anchor="middle">WPearson r leaderboard</text>
-<text x="439" y="93"  fill="#34d399" font-size="7"  text-anchor="middle">✓ downloaded 1GB</text>
-
-<!-- Experience Replay -->
-<rect x="534" y="28" width="158" height="75" rx="6" fill="#0f172a"/>
-<rect x="534" y="28" width="158" height="75" rx="6" fill="rgba(251,146,60,0.2)" stroke="#fb923c" stroke-width="1.5"/>
-<text x="613" y="50"  fill="#fb923c" font-size="10" font-weight="600" text-anchor="middle">Experience Replay</text>
-<text x="613" y="65"  fill="#94a3b8" font-size="8"  text-anchor="middle">15 assets · ratio=0.30</text>
-<text x="613" y="78"  fill="#64748b" font-size="8"  text-anchor="middle">indices · tech · crypto · FX</text>
-<text x="613" y="93"  fill="#34d399" font-size="7"  text-anchor="middle">✓ locality protection</text>
-
-<!-- data/raw (immutable) -->
-<rect x="710" y="28" width="140" height="75" rx="6" fill="#0f172a"/>
-<rect x="710" y="28" width="140" height="75" rx="6" fill="rgba(76,29,149,0.35)" stroke="#a78bfa" stroke-width="1.5"/>
-<text x="780" y="50"  fill="#a78bfa" font-size="10" font-weight="600" text-anchor="middle">data/raw/</text>
-<text x="780" y="65"  fill="#94a3b8" font-size="8"  text-anchor="middle">IMMUTABLE — Rule 4</text>
-<text x="780" y="78"  fill="#64748b" font-size="8"  text-anchor="middle">never modify</text>
-<text x="780" y="93"  fill="#a78bfa" font-size="7"  text-anchor="middle">→ data/processed/</text>
-
-<!-- ══════════════════════ TRAIN LAYER ══════════════════════ -->
-<!-- Chronos T5-small -->
-<rect x="28"  y="125" width="195" height="115" rx="6" fill="#0f172a"/>
-<rect x="28"  y="125" width="195" height="115" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
-<text x="125"  y="147" fill="#34d399" font-size="11" font-weight="700" text-anchor="middle">Chronos T5-small</text>
-<text x="125"  y="162" fill="#94a3b8" font-size="8"  text-anchor="middle">amazon/chronos-t5-small</text>
-<text x="125"  y="176" fill="#64748b" font-size="8"  text-anchor="middle">4096-token vocab · 185MB</text>
-<text x="125"  y="190" fill="#94a3b8" font-size="8"  text-anchor="middle">context=512 · native pred=64</text>
-<text x="125"  y="204" fill="#94a3b8" font-size="8"  text-anchor="middle">MeanScaleUniformBins</text>
-<text x="125"  y="218" fill="#34d399" font-size="7"  text-anchor="middle">✓ ZS CRPS=0.054 Sharpe=0.93</text>
-<text x="125"  y="231" fill="#fbbf24" font-size="7"  text-anchor="middle">⚡ T5-base ablation: TBD</text>
-
-<!-- LoRA -->
-<rect x="240"  y="125" width="190" height="115" rx="6" fill="#0f172a"/>
-<rect x="240"  y="125" width="190" height="115" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
-<text x="335"  y="147" fill="#34d399" font-size="11" font-weight="700" text-anchor="middle">LoRA Fine-tune</text>
-<text x="335"  y="162" fill="#94a3b8" font-size="8"  text-anchor="middle">r=8 · alpha=32 · drop=0.1</text>
-<text x="335"  y="176" fill="#94a3b8" font-size="8"  text-anchor="middle">target: [q, v] only</text>
-<text x="335"  y="190" fill="#94a3b8" font-size="8"  text-anchor="middle">294,912 trainable params</text>
-<text x="335"  y="204" fill="#94a3b8" font-size="8"  text-anchor="middle">lr=1e-4 · max_steps=1000</text>
-<text x="335"  y="218" fill="#34d399" font-size="7"  text-anchor="middle">✓ FT CRPS=0.053 Sharpe=1.17</text>
-<text x="335"  y="231" fill="#fb7185" font-size="7"  text-anchor="middle">⚠ rng.choice bug → fix needed</text>
-
-<!-- Val Split / Early Stop -->
-<rect x="448"  y="125" width="200" height="115" rx="6" fill="#0f172a"/>
-<rect x="448"  y="125" width="200" height="115" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
-<text x="548"  y="147" fill="#34d399" font-size="11" font-weight="700" text-anchor="middle">Val Split + Early Stop</text>
-<text x="548"  y="162" fill="#64748b" font-size="8"  text-anchor="middle">[finetune | gap | val_ctx | val_tgt]</text>
-<text x="548"  y="176" fill="#94a3b8" font-size="8"  text-anchor="middle">gap=pred_len (no leakage)</text>
-<text x="548"  y="190" fill="#94a3b8" font-size="8"  text-anchor="middle">patience=3 · eval_every=100</text>
-<text x="548"  y="204" fill="#94a3b8" font-size="8"  text-anchor="middle">best LoRA state in memory</text>
-<text x="548"  y="218" fill="#94a3b8" font-size="8"  text-anchor="middle">val CRPS on comp data only</text>
-<text x="548"  y="231" fill="#34d399" font-size="7"  text-anchor="middle">✓ replay-clean evaluation</text>
-
-<!-- WandB -->
-<rect x="665"  y="125" width="185" height="115" rx="6" fill="#0f172a"/>
-<rect x="665"  y="125" width="185" height="115" rx="6" fill="rgba(251,146,60,0.3)" stroke="#fb923c" stroke-width="1.5"/>
-<text x="757"  y="147" fill="#fb923c" font-size="11" font-weight="700" text-anchor="middle">WandB</text>
-<text x="757"  y="162" fill="#94a3b8" font-size="8"  text-anchor="middle">project: zoh2026-track03</text>
-<text x="757"  y="176" fill="#94a3b8" font-size="8"  text-anchor="middle">train/loss · val/crps</text>
-<text x="757"  y="190" fill="#94a3b8" font-size="8"  text-anchor="middle">eval/crps · eval/mase</text>
-<text x="757"  y="204" fill="#94a3b8" font-size="8"  text-anchor="middle">best run → checkpoint</text>
-<text x="757"  y="218" fill="#fb923c" font-size="7"  text-anchor="middle">sole truth — no silent runs</text>
-<text x="757"  y="231" fill="#64748b" font-size="7"  text-anchor="middle">data/oof/[run]_preds.npy</text>
-
-<!-- arrows data→train -->
-<line x1="105" y1="103" x2="105" y2="123" stroke="#fbbf24" stroke-width="1.2" marker-end="url(#arr-amber)"/>
-<line x1="272" y1="103" x2="272" y2="123" stroke="#475569" stroke-width="1.2" marker-end="url(#arr)"/>
-<line x1="613" y1="103" x2="420" y2="123" stroke="#fb923c" stroke-width="1.2" stroke-dasharray="4,2" marker-end="url(#arr-orange)"/>
-
-<!-- ══════════════════════ AGENT LAYER ══════════════════════ -->
-<rect x="26" y="276" width="880" height="195" rx="10" fill="none" stroke="#1e293b" stroke-width="1" stroke-dasharray="6,3"/>
-<text x="48"  y="294" fill="#334155" font-size="9">LangGraph State Machine — src/agent/</text>
-
-<!-- fetch_context -->
-<rect x="40"  y="302" width="180" height="85" rx="6" fill="#0f172a"/>
-<rect x="40"  y="302" width="180" height="85" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
-<text x="130" y="323" fill="#22d3ee" font-size="10" font-weight="600" text-anchor="middle">fetch_context</text>
-<text x="130" y="338" fill="#94a3b8" font-size="8"  text-anchor="middle">get_market_context()</text>
-<text x="130" y="352" fill="#64748b" font-size="8"  text-anchor="middle">prices · features · news</text>
-<text x="130" y="366" fill="#fb7185" font-size="7"  text-anchor="middle">⚠ STUB — always returns {}</text>
-<text x="130" y="379" fill="#fb7185" font-size="7"  text-anchor="middle">⚠ forecast skips silently</text>
-
-<!-- forecast_node -->
-<rect x="248" y="302" width="185" height="85" rx="6" fill="#0f172a"/>
-<rect x="248" y="302" width="185" height="85" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
-<text x="340" y="323" fill="#22d3ee" font-size="10" font-weight="600" text-anchor="middle">forecast_node</text>
-<text x="340" y="338" fill="#94a3b8" font-size="8"  text-anchor="middle">Chronos predict()</text>
-<text x="340" y="352" fill="#64748b" font-size="8"  text-anchor="middle">median · q10 · q90</text>
-<text x="340" y="366" fill="#34d399" font-size="7"  text-anchor="middle">✓ pipeline injection OK</text>
-<text x="340" y="379" fill="#fbbf24" font-size="7"  text-anchor="middle">needs prices from prev node</text>
-
-<!-- risk_node -->
-<rect x="461" y="302" width="180" height="85" rx="6" fill="#0f172a"/>
-<rect x="461" y="302" width="180" height="85" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
-<text x="551" y="323" fill="#22d3ee" font-size="10" font-weight="600" text-anchor="middle">risk_node</text>
-<text x="551" y="338" fill="#94a3b8" font-size="8"  text-anchor="middle">expected_return</text>
-<text x="551" y="352" fill="#94a3b8" font-size="8"  text-anchor="middle">downside_risk · ci_width</text>
-<text x="551" y="366" fill="#34d399" font-size="7"  text-anchor="middle">✓ rule-based metrics</text>
-<text x="551" y="379" fill="#fbbf24" font-size="7"  text-anchor="middle">⚡ vol regime detection TBD</text>
-
-<!-- llm_decision -->
-<rect x="670" y="302" width="215" height="85" rx="6" fill="#0f172a"/>
-<rect x="670" y="302" width="215" height="85" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
-<text x="777" y="323" fill="#22d3ee" font-size="10" font-weight="600" text-anchor="middle">llm_decision</text>
-<text x="777" y="338" fill="#94a3b8" font-size="8"  text-anchor="middle">claude-sonnet-4-6</text>
-<text x="777" y="352" fill="#94a3b8" font-size="8"  text-anchor="middle">BUY / SELL / HOLD + confidence</text>
-<text x="777" y="366" fill="#34d399" font-size="7"  text-anchor="middle">✓ JSON structured output</text>
-<text x="777" y="379" fill="#fbbf24" font-size="7"  text-anchor="middle">↪ fallback: rule-based decide()</text>
-
-<!-- agent arrows -->
-<line x1="220" y1="344" x2="246" y2="344" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arr-cyan)"/>
-<line x1="433" y1="344" x2="459" y2="344" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arr-cyan)"/>
-<line x1="641" y1="344" x2="668" y2="344" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arr-cyan)"/>
-
-<!-- AgentState caption -->
-<text x="460" y="466" fill="#334155" font-size="8" text-anchor="middle">AgentState { symbol · current_price · market_context · forecast · risk · decision · error · iteration }</text>
-
-<!-- best ckpt arrow from train→agent -->
-<line x1="335" y1="240" x2="335" y2="300" stroke="#34d399" stroke-width="1.2" stroke-dasharray="4,2" marker-end="url(#arr-green)"/>
-<text x="345" y="273" fill="#34d399" font-size="7">best ckpt</text>
-
-<!-- ══════════════════════ EVAL LAYER ══════════════════════ -->
-<!-- benchmark_financial -->
-<rect x="28"  y="495" width="205" height="100" rx="6" fill="#0f172a"/>
-<rect x="28"  y="495" width="205" height="100" rx="6" fill="rgba(76,29,149,0.35)" stroke="#a78bfa" stroke-width="1.5"/>
-<text x="130" y="516" fill="#a78bfa" font-size="10" font-weight="600" text-anchor="middle">benchmark_financial.py</text>
-<text x="130" y="531" fill="#94a3b8" font-size="8"  text-anchor="middle">CRPS · MASE · DirAcc</text>
-<text x="130" y="545" fill="#94a3b8" font-size="8"  text-anchor="middle">Sharpe · Return R² · Bias</text>
-<text x="130" y="559" fill="#94a3b8" font-size="8"  text-anchor="middle">15 assets · yfinance · 30d</text>
-<text x="130" y="573" fill="#34d399" font-size="7"  text-anchor="middle">✓ ZS CRPS=0.054 Sharpe=0.93</text>
-<text x="130" y="585" fill="#34d399" font-size="7"  text-anchor="middle">✓ FT CRPS=0.053 Sharpe=1.17</text>
-
-<!-- benchmark_kaggle_gresearch -->
-<rect x="250"  y="495" width="210" height="100" rx="6" fill="#0f172a"/>
-<rect x="250"  y="495" width="210" height="100" rx="6" fill="rgba(76,29,149,0.35)" stroke="#a78bfa" stroke-width="1.5"/>
-<text x="355" y="516" fill="#a78bfa" font-size="10" font-weight="600" text-anchor="middle">benchmark_kaggle_gresearch</text>
-<text x="355" y="531" fill="#94a3b8" font-size="8"  text-anchor="middle">14 crypto · daily resampled</text>
-<text x="355" y="545" fill="#94a3b8" font-size="8"  text-anchor="middle">Pearson r vs lb top: 0.027</text>
-<text x="355" y="559" fill="#94a3b8" font-size="8"  text-anchor="middle">G-Research metric proxy</text>
-<text x="355" y="573" fill="#fbbf24" font-size="7"  text-anchor="middle">↻ data ready, running next</text>
-
-<!-- src/evaluator.py -->
-<rect x="477"  y="495" width="190" height="100" rx="6" fill="#0f172a"/>
-<rect x="477"  y="495" width="190" height="100" rx="6" fill="rgba(76,29,149,0.35)" stroke="#a78bfa" stroke-width="1.5"/>
-<text x="572" y="516" fill="#a78bfa" font-size="10" font-weight="600" text-anchor="middle">src/evaluator.py</text>
-<text x="572" y="531" fill="#94a3b8" font-size="8"  text-anchor="middle">CRPS · MASE · coverage_80</text>
-<text x="572" y="545" fill="#94a3b8" font-size="8"  text-anchor="middle">naive scale normalisation</text>
-<text x="572" y="559" fill="#94a3b8" font-size="8"  text-anchor="middle">walk-forward only (Rule 3)</text>
-<text x="572" y="573" fill="#34d399" font-size="7"  text-anchor="middle">✓ plugged into train.py</text>
-<text x="572" y="585" fill="#34d399" font-size="7"  text-anchor="middle">✓ metric-agnostic interface</text>
-
-<!-- backtesting.py -->
-<rect x="683"  y="495" width="200" height="100" rx="6" fill="#0f172a"/>
-<rect x="683"  y="495" width="200" height="100" rx="6" fill="rgba(76,29,149,0.35)" stroke="#a78bfa" stroke-width="1.5"/>
-<text x="783" y="516" fill="#a78bfa" font-size="10" font-weight="600" text-anchor="middle">backtesting.py</text>
-<text x="783" y="531" fill="#94a3b8" font-size="8"  text-anchor="middle">walk-forward · BUY/SELL/HOLD</text>
-<text x="783" y="545" fill="#94a3b8" font-size="8"  text-anchor="middle">Sharpe · drawdown · return</text>
-<text x="783" y="559" fill="#94a3b8" font-size="8"  text-anchor="middle">transaction_cost=0.001</text>
-<text x="783" y="573" fill="#fb7185" font-size="7"  text-anchor="middle">⚠ win_rate = BUY count (bug)</text>
-<text x="783" y="585" fill="#fbbf24" font-size="7"  text-anchor="middle">⚡ no position sizing</text>
-
-<!-- eval arrows -->
-<line x1="783" y1="387" x2="783" y2="493" stroke="#475569" stroke-width="1" marker-end="url(#arr)"/>
-
-<!-- ══════════════════════ DEMO LAYER ══════════════════════ -->
-<!-- Gradio -->
-<rect x="28"  y="620" width="220" height="85" rx="6" fill="#0f172a"/>
-<rect x="28"  y="620" width="220" height="85" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
-<text x="138" y="641" fill="#22d3ee" font-size="10" font-weight="600" text-anchor="middle">app/demo.py (Gradio)</text>
-<text x="138" y="656" fill="#94a3b8" font-size="8"  text-anchor="middle">port 7860 · share=False</text>
-<text x="138" y="670" fill="#94a3b8" font-size="8"  text-anchor="middle">best model auto-loaded on start</text>
-<text x="138" y="684" fill="#34d399" font-size="7"  text-anchor="middle">✓ zero-shot fallback if no ckpt</text>
-<text x="138" y="696" fill="#fbbf24" font-size="7"  text-anchor="middle">⚡ WandB query not cached</text>
-
-<!-- wandb_utils -->
-<rect x="265"  y="620" width="200" height="85" rx="6" fill="#0f172a"/>
-<rect x="265"  y="620" width="200" height="85" rx="6" fill="rgba(251,146,60,0.3)" stroke="#fb923c" stroke-width="1.5"/>
-<text x="365" y="641" fill="#fb923c" font-size="10" font-weight="600" text-anchor="middle">wandb_utils.py</text>
-<text x="365" y="656" fill="#94a3b8" font-size="8"  text-anchor="middle">get_best_run_name()</text>
-<text x="365" y="670" fill="#94a3b8" font-size="8"  text-anchor="middle">load_best_pipeline()</text>
-<text x="365" y="684" fill="#94a3b8" font-size="8"  text-anchor="middle">WANDB_ENTITY=env or None</text>
-<text x="365" y="696" fill="#34d399" font-size="7"  text-anchor="middle">✓ fallback to zero-shot</text>
-
-<!-- ══════════════════════ GATE PANEL (right) ══════════════════════ -->
-<rect x="912" y="26" width="206" height="780" rx="8" fill="rgba(15,23,42,0.9)" stroke="#1e293b" stroke-width="1"/>
-<text x="1015" y="50" fill="#64748b" font-size="10" font-weight="600" text-anchor="middle">REVIEW GATES</text>
-
-<rect x="926" y="62"  width="178" height="80" rx="6" fill="rgba(6,78,59,0.3)"  stroke="#34d399" stroke-width="1.2"/>
-<text x="1015" y="83"  fill="#34d399" font-size="10" font-weight="700" text-anchor="middle">Gate 1 · Hour 2</text>
-<text x="1015" y="98"  fill="#94a3b8" font-size="8"  text-anchor="middle">Pipeline end-to-end</text>
-<text x="1015" y="111" fill="#94a3b8" font-size="8"  text-anchor="middle">ZS runs · Agent BUY/SELL/HOLD</text>
-<text x="1015" y="124" fill="#94a3b8" font-size="8"  text-anchor="middle">Gradio demo loads</text>
-<text x="1015" y="137" fill="#34d399" font-size="8"  font-weight="600" text-anchor="middle">✓ READY (locally verified)</text>
-
-<rect x="926" y="155" width="178" height="80" rx="6" fill="rgba(120,53,15,0.2)" stroke="#fbbf24" stroke-width="1.2"/>
-<text x="1015" y="176" fill="#fbbf24" font-size="10" font-weight="700" text-anchor="middle">Gate 2 · Hour 12</text>
-<text x="1015" y="191" fill="#94a3b8" font-size="8"  text-anchor="middle">LoRA CRPS &lt; ZS CRPS</text>
-<text x="1015" y="204" fill="#94a3b8" font-size="8"  text-anchor="middle">on held-out window</text>
-<text x="1015" y="217" fill="#94a3b8" font-size="8"  text-anchor="middle">Sharpe improvement</text>
-<text x="1015" y="230" fill="#fbbf24" font-size="8"  font-weight="600" text-anchor="middle">↻ pending comp data</text>
-
-<rect x="926" y="248" width="178" height="80" rx="6" fill="rgba(30,41,59,0.5)" stroke="#475569" stroke-width="1"/>
-<text x="1015" y="269" fill="#64748b" font-size="10" font-weight="700" text-anchor="middle">Gate 3 · Hour 24</text>
-<text x="1015" y="284" fill="#64748b" font-size="8"  text-anchor="middle">Sharpe &gt; 1.0 on ≥60% windows</text>
-<text x="1015" y="297" fill="#64748b" font-size="8"  text-anchor="middle">consistent agent decisions</text>
-<text x="1015" y="310" fill="#64748b" font-size="8"  text-anchor="middle">stress-test volatility regimes</text>
-<text x="1015" y="323" fill="#475569" font-size="8"  font-weight="600" text-anchor="middle">⬜ not started</text>
-
-<rect x="926" y="341" width="178" height="80" rx="6" fill="rgba(30,41,59,0.5)" stroke="#475569" stroke-width="1"/>
-<text x="1015" y="362" fill="#64748b" font-size="10" font-weight="700" text-anchor="middle">Gate 4 · Hour 30</text>
-<text x="1015" y="377" fill="#64748b" font-size="8"  text-anchor="middle">Live Gradio demo</text>
-<text x="1015" y="390" fill="#64748b" font-size="8"  text-anchor="middle">best model loaded</text>
-<text x="1015" y="403" fill="#64748b" font-size="8"  text-anchor="middle">backtest results visible</text>
-<text x="1015" y="416" fill="#475569" font-size="8"  font-weight="600" text-anchor="middle">⬜ not started</text>
-
-<!-- Scores panel -->
-<rect x="926" y="434" width="178" height="185" rx="6" fill="rgba(76,29,149,0.2)" stroke="#a78bfa" stroke-width="1"/>
-<text x="1015" y="454" fill="#a78bfa" font-size="10" font-weight="600" text-anchor="middle">CURRENT SCORES</text>
-<line x1="930" y1="459" x2="1100" y2="459" stroke="#334155" stroke-width="0.5"/>
-<text x="934" y="472" fill="#64748b" font-size="8">Metric</text><text x="1099" y="472" fill="#64748b" font-size="8" text-anchor="end">ZS / FT</text>
-<text x="934" y="487" fill="#94a3b8" font-size="8">CRPS  ↓</text>     <text x="1099" y="487" fill="#34d399" font-size="8" text-anchor="end">0.054 / 0.053</text>
-<text x="934" y="502" fill="#94a3b8" font-size="8">Sharpe ↑</text>     <text x="1099" y="502" fill="#34d399" font-size="8" text-anchor="end">0.93 / 1.17</text>
-<text x="934" y="517" fill="#94a3b8" font-size="8">Dir.Acc ↑</text>    <text x="1099" y="517" fill="#fbbf24" font-size="8" text-anchor="end">61% / 59%</text>
-<text x="934" y="532" fill="#94a3b8" font-size="8">Return R² ↑</text>  <text x="1099" y="532" fill="#34d399" font-size="8" text-anchor="end">0.40 / 0.46</text>
-<line x1="930" y1="538" x2="1100" y2="538" stroke="#334155" stroke-width="0.5"/>
-<text x="934" y="553" fill="#64748b" font-size="8">Reference</text>
-<text x="934" y="568" fill="#64748b" font-size="8">M4 WQL (T5-sm)</text>  <text x="1099" y="568" fill="#475569" font-size="8" text-anchor="end">0.062</text>
-<text x="934" y="583" fill="#64748b" font-size="8">M4 WQL (winner)</text> <text x="1099" y="583" fill="#475569" font-size="8" text-anchor="end">0.056</text>
-<text x="934" y="598" fill="#64748b" font-size="8">GR lb 1st place</text>  <text x="1099" y="598" fill="#475569" font-size="8" text-anchor="end">0.027</text>
-<text x="934" y="613" fill="#64748b" font-size="8">GR lb top-10%</text>   <text x="1099" y="613" fill="#475569" font-size="8" text-anchor="end">0.014</text>
-
-<!-- Legend -->
-<rect x="926" y="632" width="178" height="160" rx="6" fill="rgba(15,23,42,0.6)" stroke="#1e293b" stroke-width="1"/>
-<text x="934" y="650" fill="#334155" font-size="9" font-weight="600">LEGEND</text>
-<text x="934" y="668" fill="#34d399"  font-size="9">■ </text><text x="948" y="668" fill="#64748b" font-size="8">Training / Forecasting</text>
-<text x="934" y="684" fill="#22d3ee"  font-size="9">■ </text><text x="948" y="684" fill="#64748b" font-size="8">Agent / Demo</text>
-<text x="934" y="700" fill="#a78bfa"  font-size="9">■ </text><text x="948" y="700" fill="#64748b" font-size="8">Evaluation</text>
-<text x="934" y="716" fill="#fb923c"  font-size="9">■ </text><text x="948" y="716" fill="#64748b" font-size="8">Experiment Tracking</text>
-<text x="934" y="732" fill="#fbbf24"  font-size="9">■ </text><text x="948" y="732" fill="#64748b" font-size="8">Data / Replay</text>
-<text x="934" y="748" fill="#fb7185"  font-size="9">⚠ </text><text x="948" y="748" fill="#fb7185" font-size="8">Bug / stub (fix before Gate)</text>
-<text x="934" y="764" fill="#fbbf24"  font-size="9">⚡ </text><text x="948" y="764" fill="#fbbf24" font-size="8">Optimization opportunity</text>
-<text x="934" y="780" fill="#475569"  font-size="9">-- </text><text x="948" y="780" fill="#64748b" font-size="8">Optional / future</text>
-
-</svg>
-</div>
-
-<!-- Summary cards -->
-<div class="cards-grid">
-  <div class="card">
-    <div class="card-header"><div class="card-dot emerald"></div><h3>Training Pipeline</h3></div>
-    <ul>
-      <li class="ok">✓ Chronos T5-small loaded &amp; verified</li>
-      <li class="ok">✓ LoRA (r=8, q+v, 295K params)</li>
-      <li class="ok">✓ Val split with gap (no leakage)</li>
-      <li class="ok">✓ Early stopping patience=3</li>
-      <li class="ok">✓ Experience replay ratio=0.30</li>
-      <li class="ok">✓ WandB logging every 10 steps</li>
-      <li class="warn">⚡ No LR scheduler (add cosine decay)</li>
-      <li class="warn">⚡ No gradient clipping (add norm ≤1.0)</li>
-      <li class="bug">⚠ rng.choice(pool) inhomogeneous crash</li>
-    </ul>
-  </div>
-  <div class="card">
-    <div class="card-header"><div class="card-dot cyan"></div><h3>Agent Pipeline</h3></div>
-    <ul>
-      <li class="ok">✓ LangGraph 4-node state machine</li>
-      <li class="ok">✓ Chronos pipeline injection via partial()</li>
-      <li class="ok">✓ Claude sonnet-4-6 LLM decision</li>
-      <li class="ok">✓ Rule-based fallback node</li>
-      <li class="ok">✓ Gradio demo + WandB best-run load</li>
-      <li class="bug">⚠ fetch_context_node → always returns {}</li>
-      <li class="bug">⚠ forecast silently skips when ctx empty</li>
-      <li class="warn">⚡ WandB query not cached (slow startup)</li>
-      <li class="warn">⚡ no volatility regime signal in risk_node</li>
-    </ul>
-  </div>
-  <div class="card">
-    <div class="card-header"><div class="card-dot violet"></div><h3>Evaluation &amp; Benchmark</h3></div>
-    <ul>
-      <li class="ok">✓ CRPS · MASE · coverage_80</li>
-      <li class="ok">✓ Sharpe · DirAcc · Return R² added</li>
-      <li class="ok">✓ Walk-forward backtest wired</li>
-      <li class="ok">✓ benchmark_financial.py complete</li>
-      <li class="ok">✓ G-Research Kaggle data downloaded</li>
-      <li class="bug">⚠ win_rate = BUY count (not actual P&amp;L wins)</li>
-      <li class="warn">⚡ no batched multi-series inference</li>
-      <li class="warn">⚡ no ensemble ZS+FT (easy +CRPS gain)</li>
-    </ul>
-  </div>
-</div>
-
-<!-- Optimization panel -->
-<div class="opt-panel">
-  <h2>Optimization Targets — All Resolved ✅</h2>
-  <div class="opt-grid">
-    <div class="opt-section">
-      <h3 class="bug-h" style="opacity:.6">🟢 Critical Bugs — All Fixed</h3>
-
-      <div class="opt-item bug" style="opacity:.55">
-        <span class="badge fix">✅ DONE</span>
-        <strong>rng.choice(pool) — train.py</strong>
-        Inhomogeneous numpy list → ValueError on mixed-length series.<br>
-        Fixed: <code>s = pool[rng.integers(0, len(pool))]</code>
-      </div>
-
-      <div class="opt-item bug" style="opacity:.55">
-        <span class="badge fix">✅ DONE</span>
-        <strong>fetch_context_node always returned {} — nodes.py</strong>
-        forecast_node received empty prices → silently skipped all predictions.<br>
-        Fixed: fetches 3yr daily OHLCV via yfinance; fills prices + pred_len.
-      </div>
-
-      <div class="opt-item bug" style="opacity:.55">
-        <span class="badge fix">✅ DONE</span>
-        <strong>win_rate counted BUY actions — backtesting.py</strong>
-        Was counting number of BUY calls, not profitable completed trades.<br>
-        Fixed: tracks entry_price, compares exit_price &gt; entry_price at SELL.
-      </div>
-
-      <h3 class="perf-h" style="margin-top:14px;opacity:.6">🟢 Performance — All Done</h3>
-
-      <div class="opt-item perf" style="opacity:.55">
-        <span class="badge opt">✅ DONE</span>
-        <strong>Cosine LR Scheduler with warmup</strong>
-        Linear warmup for 100 steps → cosine decay to lr×0.01 at step 1000.<br>
-        Logs train/lr to WandB. Expected val CRPS improvement: 5–10%.
-      </div>
-
-      <div class="opt-item perf" style="opacity:.55">
-        <span class="badge opt">✅ DONE</span>
-        <strong>Gradient clipping</strong>
-        <code>clip_grad_norm_(params, 1.0)</code> after backward prevents loss spikes on extreme financial batches.
-      </div>
-
-      <div class="opt-item perf" style="opacity:.55">
-        <span class="badge opt">✅ DONE</span>
-        <strong>Batched inference</strong>
-        <code>_predict_batched()</code> sends list[Tensor] in configurable chunks (default 16).<br>
-        3–4× faster eval on A100; used in both _eval_val_crps and main().
+  <div class="header">
+    <div class="header-row">
+      <div class="pulse-dot"></div>
+      <h1>ZOH 2026 · Track #1 Industrial AI — Pipeline Architecture</h1>
+      <div class="toolbar">
+        <div class="toolbar-actions">
+          <button onclick="copyAsImage(this)">&#128203; Copy</button>
+          <button onclick="downloadPNG(this)">&#128444; PNG</button>
+          <button onclick="downloadPDF(this)">&#128196; PDF</button>
+        </div>
+        <button class="toolbar-toggle" onclick="this.parentElement.classList.toggle('expanded')" title="Export options" aria-label="Export options">&#8943;</button>
       </div>
     </div>
+    <p class="subtitle">Infineon &middot; Process Sequence Modeling &middot; GPT-2 from scratch &middot; 3 Submission Tasks &middot; Leonardo A100 Cluster</p>
+  </div>
 
-    <div class="opt-section">
-      <h3 class="arch-h" style="opacity:.6">🟢 Architecture Gaps — All Closed</h3>
+  <div class="diagram-container">
+    <svg viewBox="0 0 1260 515">
+      <defs>
+        <marker id="arr" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#64748b"/>
+        </marker>
+        <marker id="arr-emerald" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#34d399"/>
+        </marker>
+        <marker id="arr-rose" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+          <polygon points="0 0, 10 3.5, 0 7" fill="#fb7185"/>
+        </marker>
+        <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+          <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e293b" stroke-width="0.5"/>
+        </pattern>
+      </defs>
 
-      <div class="opt-item arch" style="opacity:.55">
-        <span class="badge stub">✅ DONE</span>
-        <strong>Generic CSV dataset loader</strong>
-        load_dataset() now accepts name="csv" with price_col / timestamp_col / series_col.<br>
-        Handles single- and multi-series files. Ready for competition data format.
+      <!-- Background -->
+      <rect width="100%" height="100%" fill="url(#grid)"/>
+
+      <!-- ── DASHED INFRA CONNECTIONS (behind boxes) ────────────────────── -->
+
+      <!-- Training Loop → WandB -->
+      <path d="M 697 214 L 697 378 L 92 378 L 92 431" fill="none" stroke="#fbbf24" stroke-width="1" stroke-dasharray="5,4" opacity="0.6" marker-end="url(#arr)"/>
+      <text x="415" y="373" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono">metrics / loss / top-1</text>
+
+      <!-- Checkpoint → Gradio Demo -->
+      <path d="M 901 214 L 901 388 L 277 388 L 277 431" fill="none" stroke="#22d3ee" stroke-width="1" stroke-dasharray="5,4" opacity="0.6" marker-end="url(#arr)"/>
+      <text x="592" y="383" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono">load best model</text>
+
+      <!-- ── MAIN PIPELINE ARROWS ──────────────────────────────────────── -->
+
+      <!-- Data → Tokenizer -->
+      <line x1="153" y1="140" x2="183" y2="140" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+      <text x="168" y="133" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono">seqs</text>
+
+      <!-- Tokenizer → GPT-2 -->
+      <line x1="342" y1="140" x2="381" y2="140" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+      <text x="361" y="133" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono">tokens</text>
+
+      <!-- GPT-2 → Training -->
+      <line x1="577" y1="132" x2="616" y2="132" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+      <text x="596" y="125" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono">logits</text>
+
+      <!-- Training → Checkpoint -->
+      <line x1="778" y1="140" x2="818" y2="140" stroke="#64748b" stroke-width="1.5" marker-end="url(#arr)"/>
+      <text x="798" y="133" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono">save best</text>
+
+      <!-- Checkpoint → Task 1 (diagonal up-right) -->
+      <line x1="984" y1="126" x2="1016" y2="100" stroke="#34d399" stroke-width="1.5" marker-end="url(#arr-emerald)"/>
+
+      <!-- Checkpoint → Task 2 (right, slight down) -->
+      <line x1="984" y1="140" x2="1016" y2="230" stroke="#34d399" stroke-width="1.5" marker-end="url(#arr-emerald)"/>
+
+      <!-- Checkpoint → Task 3 (diagonal down-right) -->
+      <line x1="984" y1="154" x2="1016" y2="360" stroke="#fb7185" stroke-width="1.5" marker-end="url(#arr-rose)"/>
+
+      <!-- ── DATA REGION ─────────────────────────────────────────────────── -->
+      <rect x="18" y="70" width="133" height="142" rx="10" fill="rgba(251,191,36,0.04)" stroke="#fbbf24" stroke-width="1" stroke-dasharray="8,4"/>
+      <text x="84" y="89" fill="#fbbf24" font-size="9" font-weight="600" text-anchor="middle" font-family="JetBrains Mono">Training Data</text>
+
+      <!-- IC -->
+      <rect x="28" y="96" width="113" height="28" rx="4" fill="#0f172a"/>
+      <rect x="28" y="96" width="113" height="28" rx="4" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1"/>
+      <text x="84" y="108" fill="white" font-size="9" font-weight="600" text-anchor="middle" font-family="JetBrains Mono">IC</text>
+      <text x="84" y="119" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="JetBrains Mono">1 000 sequences</text>
+
+      <!-- IGBT -->
+      <rect x="28" y="130" width="113" height="28" rx="4" fill="#0f172a"/>
+      <rect x="28" y="130" width="113" height="28" rx="4" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1"/>
+      <text x="84" y="142" fill="white" font-size="9" font-weight="600" text-anchor="middle" font-family="JetBrains Mono">IGBT</text>
+      <text x="84" y="153" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="JetBrains Mono">1 000 sequences</text>
+
+      <!-- MOSFET -->
+      <rect x="28" y="164" width="113" height="28" rx="4" fill="#0f172a"/>
+      <rect x="28" y="164" width="113" height="28" rx="4" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1"/>
+      <text x="84" y="176" fill="white" font-size="9" font-weight="600" text-anchor="middle" font-family="JetBrains Mono">MOSFET</text>
+      <text x="84" y="187" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="JetBrains Mono">1 000 sequences</text>
+
+      <!-- generate note -->
+      <line x1="28" y1="198" x2="141" y2="198" stroke="#1e293b" stroke-width="1"/>
+      <text x="84" y="208" fill="#34d399" font-size="7" text-anchor="middle" font-family="JetBrains Mono">+ generate_sequences.py</text>
+
+      <!-- ── TOKENIZER ─────────────────────────────────────────────────────── -->
+      <rect x="185" y="70" width="155" height="142" rx="6" fill="#0f172a"/>
+      <rect x="185" y="70" width="155" height="142" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+      <text x="262" y="100" fill="white" font-size="11" font-weight="600" text-anchor="middle" font-family="JetBrains Mono">ProcessStep</text>
+      <text x="262" y="115" fill="white" font-size="11" font-weight="600" text-anchor="middle" font-family="JetBrains Mono">Tokenizer</text>
+      <text x="262" y="134" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono">build vocab from seqs</text>
+      <text x="262" y="148" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono">encode: step &#8594; int</text>
+      <text x="262" y="162" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono">decode: int &#8594; step</text>
+      <text x="262" y="177" fill="#34d399" font-size="8" text-anchor="middle" font-family="JetBrains Mono">~50&#8211;100 unique steps</text>
+      <text x="262" y="192" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="JetBrains Mono">BOS / EOS / PAD / UNK</text>
+
+      <!-- ── GPT-2 MODEL ───────────────────────────────────────────────────── -->
+      <rect x="383" y="55" width="192" height="157" rx="6" fill="#0f172a"/>
+      <rect x="383" y="55" width="192" height="157" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+      <text x="479" y="83" fill="white" font-size="11" font-weight="600" text-anchor="middle" font-family="JetBrains Mono">GPT-2</text>
+      <text x="479" y="98" fill="#22d3ee" font-size="9" font-weight="600" text-anchor="middle" font-family="JetBrains Mono">trained from scratch</text>
+      <line x1="393" y1="106" x2="565" y2="106" stroke="#22d3ee" stroke-width="0.5" opacity="0.4"/>
+      <text x="479" y="120" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono">n_embd=256, n_layer=6</text>
+      <text x="479" y="134" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono">n_head=8, n_positions=256</text>
+      <text x="479" y="148" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono">vocab_size = tokenizer.vocab</text>
+      <text x="479" y="162" fill="#22d3ee" font-size="8" text-anchor="middle" font-family="JetBrains Mono">~2.5M parameters</text>
+      <text x="479" y="176" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono">causal LM · GPT2LMHeadModel</text>
+      <text x="479" y="190" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="JetBrains Mono">BF16 on A100</text>
+
+      <!-- ── TRAINING LOOP ─────────────────────────────────────────────────── -->
+      <rect x="618" y="70" width="158" height="142" rx="6" fill="#0f172a"/>
+      <rect x="618" y="70" width="158" height="142" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+      <text x="697" y="100" fill="white" font-size="11" font-weight="600" text-anchor="middle" font-family="JetBrains Mono">Training Loop</text>
+      <text x="697" y="118" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono">AdamW + cosine LR</text>
+      <text x="697" y="132" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono">warmup &#8594; cosine decay</text>
+      <text x="697" y="146" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono">grad clip = 1.0</text>
+      <text x="697" y="160" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono">labels: &#8722;100 on PAD</text>
+      <text x="697" y="176" fill="#34d399" font-size="8" text-anchor="middle" font-family="JetBrains Mono">eval Top-1 every N steps</text>
+      <text x="697" y="190" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="JetBrains Mono">batch_size = 64</text>
+
+      <!-- ── CHECKPOINT ────────────────────────────────────────────────────── -->
+      <rect x="820" y="70" width="162" height="142" rx="6" fill="#0f172a"/>
+      <rect x="820" y="70" width="162" height="142" rx="6" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="901" y="100" fill="white" font-size="11" font-weight="600" text-anchor="middle" font-family="JetBrains Mono">Checkpoint</text>
+      <text x="901" y="118" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono">data/oof/&lt;run_name&gt;/</text>
+      <text x="901" y="134" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono">model.pt</text>
+      <text x="901" y="148" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono">tokenizer.json</text>
+      <line x1="830" y1="158" x2="972" y2="158" stroke="#a78bfa" stroke-width="0.5" opacity="0.4"/>
+      <text x="901" y="172" fill="#a78bfa" font-size="8" text-anchor="middle" font-family="JetBrains Mono">saved on best Top-1</text>
+      <text x="901" y="186" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="JetBrains Mono">load_best_model()</text>
+
+      <!-- ── TASK 1: NEXT-STEP PREDICTION ─────────────────────────────────── -->
+      <rect x="1018" y="50" width="185" height="100" rx="6" fill="#0f172a"/>
+      <rect x="1018" y="50" width="185" height="100" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+      <text x="1110" y="77" fill="white" font-size="10" font-weight="600" text-anchor="middle" font-family="JetBrains Mono">Task 1: Next-Step</text>
+      <text x="1110" y="93" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono">Top-1 / Top-3 / Top-5</text>
+      <text x="1110" y="107" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono">MRR</text>
+      <line x1="1028" y1="115" x2="1193" y2="115" stroke="#34d399" stroke-width="0.5" opacity="0.4"/>
+      <text x="1110" y="128" fill="#34d399" font-size="7" text-anchor="middle" font-family="JetBrains Mono">eval_input_valid.csv</text>
+      <text x="1110" y="141" fill="#94a3b8" font-size="7" text-anchor="middle" font-family="JetBrains Mono">600 entries · 60%+80% trunc</text>
+
+      <!-- ── TASK 2: SEQUENCE COMPLETION ──────────────────────────────────── -->
+      <rect x="1018" y="182" width="185" height="100" rx="6" fill="#0f172a"/>
+      <rect x="1018" y="182" width="185" height="100" rx="6" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1.5"/>
+      <text x="1110" y="208" fill="white" font-size="10" font-weight="600" text-anchor="middle" font-family="JetBrains Mono">Task 2: Completion</text>
+      <text x="1110" y="225" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono">Exact Match Rate</text>
+      <text x="1110" y="239" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono">Norm. Edit Distance</text>
+      <text x="1110" y="253" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono">Token Accuracy</text>
+      <text x="1110" y="271" fill="#34d399" font-size="7" text-anchor="middle" font-family="JetBrains Mono">autoregressive generation</text>
+
+      <!-- ── TASK 3: ANOMALY DETECTION ─────────────────────────────────────── -->
+      <rect x="1018" y="314" width="185" height="100" rx="6" fill="#0f172a"/>
+      <rect x="1018" y="314" width="185" height="100" rx="6" fill="rgba(136,19,55,0.4)" stroke="#fb7185" stroke-width="1.5"/>
+      <text x="1110" y="340" fill="white" font-size="10" font-weight="600" text-anchor="middle" font-family="JetBrains Mono">Task 3: Anomaly</text>
+      <text x="1110" y="357" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono">Perplexity &#8594; threshold</text>
+      <text x="1110" y="371" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono">Binary Acc · Precision</text>
+      <text x="1110" y="385" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono">Recall · F1 · ROC-AUC</text>
+      <text x="1110" y="403" fill="#fb7185" font-size="7" text-anchor="middle" font-family="JetBrains Mono">eval_input_anomaly.csv 987 seqs</text>
+
+      <!-- ── WANDB ──────────────────────────────────────────────────────────── -->
+      <rect x="18" y="433" width="148" height="68" rx="6" fill="#0f172a"/>
+      <rect x="18" y="433" width="148" height="68" rx="6" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1.5"/>
+      <text x="92" y="458" fill="white" font-size="11" font-weight="600" text-anchor="middle" font-family="JetBrains Mono">WandB</text>
+      <text x="92" y="473" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono">experiment tracking</text>
+      <text x="92" y="487" fill="#fbbf24" font-size="7" text-anchor="middle" font-family="JetBrains Mono">sole source of truth</text>
+
+      <!-- ── GRADIO DEMO ────────────────────────────────────────────────────── -->
+      <rect x="200" y="433" width="155" height="68" rx="6" fill="#0f172a"/>
+      <rect x="200" y="433" width="155" height="68" rx="6" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1.5"/>
+      <text x="277" y="458" fill="white" font-size="11" font-weight="600" text-anchor="middle" font-family="JetBrains Mono">Gradio Demo</text>
+      <text x="277" y="473" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono">predict / complete</text>
+      <text x="277" y="487" fill="#22d3ee" font-size="7" text-anchor="middle" font-family="JetBrains Mono">anomaly check · :7860</text>
+
+      <!-- ── EVAL METRICS ───────────────────────────────────────────────────── -->
+      <rect x="395" y="433" width="165" height="68" rx="6" fill="#0f172a"/>
+      <rect x="395" y="433" width="165" height="68" rx="6" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1.5"/>
+      <text x="477" y="458" fill="white" font-size="11" font-weight="600" text-anchor="middle" font-family="JetBrains Mono">eval_metrics.py</text>
+      <text x="477" y="473" fill="#94a3b8" font-size="8" text-anchor="middle" font-family="JetBrains Mono">Task 1+2+3 report</text>
+      <text x="477" y="487" fill="#a78bfa" font-size="7" text-anchor="middle" font-family="JetBrains Mono">per-family breakdown</text>
+
+      <!-- ── LEGEND ─────────────────────────────────────────────────────────── -->
+      <text x="1018" y="428" fill="white" font-size="10" font-weight="600" font-family="JetBrains Mono">Legend</text>
+      <rect x="1018" y="435" width="14" height="10" rx="2" fill="rgba(120,53,15,0.3)" stroke="#fbbf24" stroke-width="1"/>
+      <text x="1038" y="444" fill="#94a3b8" font-size="8" font-family="JetBrains Mono">Competition Data</text>
+      <rect x="1018" y="450" width="14" height="10" rx="2" fill="rgba(6,78,59,0.4)" stroke="#34d399" stroke-width="1"/>
+      <text x="1038" y="459" fill="#94a3b8" font-size="8" font-family="JetBrains Mono">ML Pipeline / Tasks</text>
+      <rect x="1018" y="465" width="14" height="10" rx="2" fill="rgba(8,51,68,0.4)" stroke="#22d3ee" stroke-width="1"/>
+      <text x="1038" y="474" fill="#94a3b8" font-size="8" font-family="JetBrains Mono">Model / Demo</text>
+      <rect x="1018" y="480" width="14" height="10" rx="2" fill="rgba(76,29,149,0.4)" stroke="#a78bfa" stroke-width="1"/>
+      <text x="1038" y="489" fill="#94a3b8" font-size="8" font-family="JetBrains Mono">Storage / Eval</text>
+      <rect x="1018" y="495" width="14" height="10" rx="2" fill="rgba(136,19,55,0.4)" stroke="#fb7185" stroke-width="1"/>
+      <text x="1038" y="504" fill="#94a3b8" font-size="8" font-family="JetBrains Mono">Anomaly Detection</text>
+    </svg>
+  </div>
+
+  <div class="cards">
+    <div class="card">
+      <div class="card-header">
+        <div class="card-dot cyan"></div>
+        <h3>Model Architecture</h3>
       </div>
+      <ul>
+        <li>&#8226; GPT-2 style transformer &mdash; trained from scratch</li>
+        <li>&#8226; Custom vocabulary: all unique process step names</li>
+        <li>&#8226; n_embd=256 &middot; n_layer=6 &middot; n_head=8 &middot; ~2.5M params</li>
+        <li>&#8226; n_positions=256 &mdash; covers 115&ndash;150 step sequences</li>
+        <li>&#8226; Causal LM loss &mdash; next-token prediction objective</li>
+        <li>&#8226; PAD tokens masked (labels=&minus;100, attn_mask=0)</li>
+        <li>&#8226; Stretch: n_embd=512, n_layer=8 for scaling ablation</li>
+      </ul>
+    </div>
 
-      <div class="opt-item arch" style="opacity:.55">
-        <span class="badge stub">✅ DONE</span>
-        <strong>Removed dead PatchTST code</strong>
-        src/forecasting/patchtst_finetune.py deleted (PatchTST dropped by design decision).
+    <div class="card">
+      <div class="card-header">
+        <div class="card-dot emerald"></div>
+        <h3>Submission Tasks</h3>
       </div>
+      <ul>
+        <li>&#8226; Task 1 &mdash; Next-Step: Top-1/3/5 Accuracy, MRR</li>
+        <li>&#8226; Task 2 &mdash; Completion: Exact Match, Edit Distance, Token Acc</li>
+        <li>&#8226; Task 3 &mdash; Anomaly: perplexity &rarr; F1, ROC-AUC, Rule Attribution</li>
+        <li>&#8226; Eval set fixed &amp; shared &mdash; all teams use same files</li>
+        <li>&#8226; Task 4 (OOD, organiser-only): 4th family, post-submission</li>
+        <li>&#8226; 3 families: IC &middot; IGBT &middot; MOSFET &middot; 115&ndash;150 steps/seq</li>
+      </ul>
+    </div>
 
-      <div class="opt-item arch" style="opacity:.55">
-        <span class="badge stub">✅ DONE</span>
-        <strong>Volatility regime detection in risk_node</strong>
-        Rolling 20-day log-return std vs 252-day baseline → vol_regime high/normal/low.<br>
-        Scales confidence 50% in high-vol; widens BUY threshold 1.5× in crashes.
+    <div class="card">
+      <div class="card-header">
+        <div class="card-dot amber"></div>
+        <h3>Infrastructure &amp; Workflow</h3>
       </div>
-
-      <h3 class="perf-h" style="margin-top:14px">⚡ Quick Wins — Competition Day</h3>
-
-      <div class="opt-item perf">
-        <span class="badge opt">WIN</span>
-        <strong>T5-small → T5-base ablation</strong>
-        T5-base M4 WQL=0.057 vs small=0.062 (paper numbers).<br>
-        Run immediately once competition data arrives; switch if improvement is significant.
-      </div>
-
-      <div class="opt-item perf">
-        <span class="badge opt">WIN</span>
-        <strong>Ensemble ZS + LoRA</strong>
-        Combine 50 samples each → 100 total; reduces CRPS variance.<br>
-        Two lines: <code>np.concatenate([samples_zs, samples_ft], axis=0)</code>
-      </div>
-
-      <div class="opt-item perf">
-        <span class="badge opt">WIN</span>
-        <strong>Competition metric-specific tuning</strong>
-        Sharpe → add directional signal weighting in risk_node.<br>
-        CRPS → current architecture is already optimal, just run.<br>
-        Pearson r → switch to directional loss fine-tune.
-      </div>
+      <ul>
+        <li>&#8226; Training: Leonardo cluster &middot; 64&times; NVIDIA A100 (BF16)</li>
+        <li>&#8226; Data: 3K pre-generated seqs + unlimited via generate_sequences.py</li>
+        <li>&#8226; WandB: sole source of truth &mdash; every run logged</li>
+        <li>&#8226; Entry: uv run python src/train.py configs/exp/&lt;name&gt;.yaml</li>
+        <li>&#8226; Demo: uv run python app/demo.py &rarr; :7860</li>
+        <li>&#8226; Mentor on-site: Simeon (Infineon)</li>
+      </ul>
     </div>
   </div>
+
+  <p class="footer">ZOH 2026 &middot; Track #1 Industrial AI (Infineon) &middot; Zero One Hack Vienna &middot; May 29&ndash;31, 2026</p>
+
 </div>
 
-<div class="footer">ZOH 2026 · Track 03 · Chronos T5-small + LoRA · LangGraph · Gradio &nbsp;|&nbsp; 2026-05-29 &nbsp;|&nbsp; all bugs fixed · all perf opts done · 3 quick wins remaining</div>
-</div>
 <script>
-function getRect(){
-  const el=document.getElementById('report-container');
-  const r=el.getBoundingClientRect();
-  return{x:r.left+window.scrollX-32,y:r.top+window.scrollY-32,width:r.width+64,height:r.height+64};
-}
-function copyAsImage(){
-  const r=getRect();
-  html2canvas(document.body,{x:r.x,y:r.y,width:r.width,height:r.height,scale:2,
-    ignoreElements:e=>e.classList.contains('toolbar-actions')})
-  .then(c=>c.toBlob(b=>navigator.clipboard.write([new ClipboardItem({'image/png':b})])));
-}
-function downloadPNG(){
-  const r=getRect();
-  html2canvas(document.body,{x:r.x,y:r.y,width:r.width,height:r.height,scale:2,
-    ignoreElements:e=>e.classList.contains('toolbar-actions')})
-  .then(c=>{const a=document.createElement('a');a.download='zoh2026-architecture.png';a.href=c.toDataURL();a.click();});
-}
-function downloadPDF(){
-  const r=getRect();
-  html2canvas(document.body,{x:r.x,y:r.y,width:r.width,height:r.height,scale:2,
-    ignoreElements:e=>e.classList.contains('toolbar-actions')})
-  .then(c=>{const{jsPDF}=window.jspdf;
-    const pdf=new jsPDF({orientation:'landscape',unit:'px',format:[r.width*2,r.height*2]});
-    pdf.addImage(c.toDataURL('image/png'),'PNG',0,0,r.width*2,r.height*2);
-    pdf.save('zoh2026-architecture.pdf');});
-}
+  async function copyAsImage(btn) {
+    const orig = btn.textContent;
+    try {
+      const el = document.getElementById('report-container');
+      const r = el.getBoundingClientRect(); const pad = 32;
+      const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+      const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+      btn.textContent = 'Copied!';
+    } catch (e) { btn.textContent = 'Failed'; }
+    setTimeout(() => btn.textContent = orig, 2000);
+  }
+  async function downloadPNG(btn) {
+    const orig = btn.textContent; btn.textContent = '...';
+    try {
+      const el = document.getElementById('report-container');
+      const r = el.getBoundingClientRect(); const pad = 32;
+      const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+      const link = document.createElement('a'); link.download = 'zoh2026-track1-architecture.png'; link.href = canvas.toDataURL('image/png'); link.click();
+      btn.textContent = 'Done!';
+    } catch (e) { btn.textContent = 'Failed'; }
+    setTimeout(() => btn.textContent = orig, 2000);
+  }
+  async function downloadPDF(btn) {
+    const orig = btn.textContent; btn.textContent = '...';
+    try {
+      const el = document.getElementById('report-container');
+      const r = el.getBoundingClientRect(); const pad = 32;
+      const canvas = await html2canvas(document.body, { backgroundColor: '#020617', scale: 2, useCORS: true, ignoreElements: (e) => e.classList && e.classList.contains('toolbar'), x: r.left + window.scrollX - pad, y: r.top + window.scrollY - pad, width: r.width + pad * 2, height: r.height + pad * 2 });
+      const imgData = canvas.toDataURL('image/png');
+      const { jsPDF } = window.jspdf;
+      const orientation = canvas.width > canvas.height ? 'landscape' : 'portrait';
+      const pdf = new jsPDF({ orientation, unit: 'px', format: [canvas.width, canvas.height], hotfixes: ['px_scaling'] });
+      pdf.addImage(imgData, 'PNG', 0, 0, canvas.width, canvas.height);
+      pdf.save('zoh2026-track1-architecture.pdf');
+      btn.textContent = 'Done!';
+    } catch (e) { btn.textContent = 'Failed'; }
+    setTimeout(() => btn.textContent = orig, 2000);
+  }
 </script>
 </body>
 </html>

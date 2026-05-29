@@ -1,8 +1,8 @@
-# ZOH 2026 — Track #3 Forecasting: Trading Decision Agent
+# ZOH 2026 — Track #1 Industrial AI: Process Sequence Modeling
 
 **Competition**: Zero One Hack · Vienna · May 29–31, 2026 · 36 hours · 64× NVIDIA A100  
-**Track**: #3 — Forecasting (Sybilion) · *An agent that decides when to buy*  
-**Technical focus**: Agent design, multi-step decisions, and stress-tested evaluation at scale.  
+**Track**: #1 — Industrial AI (Infineon) · *Models that learn how processes unfold*  
+**Technical focus**: Train, fine-tune, or build sequence models (LLMs, transformers, hybrids)  
 **Goal**: Real trained model + live Gradio demo. A slide deck without a running model will not clear judging.
 
 ---
@@ -14,88 +14,107 @@ This is the authoritative sequence. Do not skip steps or proceed past a Gate wit
 ### Hour 0–2 · Data Arrival → Gate 1
 
 ```bash
-# 1. Verify environment is healthy
+# 1. Verify environment
 uv run python scripts/verify_setup.py
 
-# 2. Fill in competition data format in the config
-#    Edit configs/exp/chronos_zeroshot_v0.yaml:
-#      dataset.path           → path to competition CSV
-#      dataset.price_col      → column name for prices
-#      dataset.prediction_length → horizon (from briefing)
+# 2. Inspect data — confirm column names and sequence format
+#    Expected: CSV with SEQUENCE_ID, STEP columns (long format)
+#    Data lives in: data/raw/training_data/
 
-# 3. Run zero-shot baseline immediately
-uv run python src/train.py configs/exp/chronos_zeroshot_v0.yaml
+# 3. Quick smoke-test: verify tokenizer builds correctly
+uv run python -c "
+from src.data.process_loader import load_sequences, ProcessStepTokenizer
+seqs = load_sequences('data/raw/training_data/')
+tok = ProcessStepTokenizer.build(seqs)
+print(f'vocab: {tok.vocab_size}, sequences: {len(seqs)}')
+"
 
-# 4. Launch demo to confirm Gate 1
+# 4. Run dummy training to confirm pipeline end-to-end
+WANDB_MODE=disabled uv run python src/train.py configs/exp/gpt2_dummy.yaml
+
+# 5. Launch demo
 uv run python app/demo.py
 ```
 
-**Gate 1 pass criteria** (human must confirm before continuing):
-- Zero-shot Chronos runs end-to-end without error
-- Agent produces BUY / SELL / HOLD output
+**Gate 1 pass criteria** (human must confirm):
+- Tokenizer builds from competition CSV without error
+- Training loop runs end-to-end (loss decreasing)
 - Gradio demo loads at http://localhost:7860
 
 ---
 
-### Hour 2–12 · Fine-tuning → Gate 2
+### Hour 2–12 · Full Training → Gate 2
 
 ```bash
-# 5. Update LoRA config with competition data format
-#    Edit configs/exp/chronos_lora_v1.yaml (same fields as above)
+# 6. Update gpt2_finetune_v1.yaml if needed:
+#    dataset.train_path        → data/raw/training_data/
+#    dataset.sequence_col      → actual column name (default: SEQUENCE_ID)
+#    dataset.step_col          → actual column name (default: STEP)
+#    dataset.product_families  → [IC, IGBT, MOSFET] or adjust to match
 
-# 6. Run LoRA fine-tune (uses experience replay automatically)
-uv run python src/train.py configs/exp/chronos_lora_v1.yaml
+# 7. Launch full training (3 000 steps, A100)
+uv run python src/train.py configs/exp/gpt2_finetune_v1.yaml
 
-# 7. Compare results in WandB — check eval/crps improved
-#    Also run backtest to verify Sharpe improvement
-bash scripts/run_backtest.sh <symbol> chronos_lora_v1
+# 8. Monitor in WandB — watch eval/top1, eval/top3, eval/mrr
+#    Target: Top-1 > 0.5 by step 1000
 ```
 
-**Gate 2 pass criteria**: LoRA CRPS < zero-shot CRPS on held-out window.  
-**Fail** → check `skills/time-series-finetuning/references/03-evaluation-debugging.md` for diagnosis.
+**Gate 2 pass criteria**: Top-1 accuracy improving; checkpoint saved at `data/oof/gpt2_finetune_v1/`.
 
 ---
 
-### Hour 12–24 · Scale + Stress Test → Gate 3
+### Hour 12–24 · Eval + Scaling → Gate 3
 
 ```bash
-# 8. T5-base ablation (quick win — swap checkpoint)
-#    Edit configs/exp/chronos_lora_v1.yaml:
-#      model.checkpoint: amazon/chronos-t5-base
+# 9. Run full evaluation on competition eval set
+uv run python -c "
+from src.evaluator import run_full_eval
+from src.utils.wandb_utils import load_best_model
+model, tok, run, score = load_best_model()
+results = run_full_eval(model, tok,
+    'data/raw/eval_input_valid.csv',
+    'data/raw/eval_input_anomaly.csv')
+import json; print(json.dumps(results, indent=2))
+"
 
-uv run python src/train.py configs/exp/chronos_lora_v1.yaml
+# 10. Scaling ablation — larger model
+#     In gpt2_finetune_v1.yaml: n_embd=512, n_layer=8  → run_name: gpt2_large_v1
+uv run python src/train.py configs/exp/gpt2_finetune_v1.yaml
 
-# 9. Ensemble ZS + LoRA (2-line win)
-#    samples = np.concatenate([samples_zs, samples_ft], axis=0)
-
-# 10. Run full backtest across all available symbols/windows
-bash scripts/run_backtest.sh ALL chronos_lora_v1
+# 11. Compare baseline vs trained vs large in WandB
 ```
 
-**Gate 3 pass criteria**: Sharpe > 1.0 on ≥ 60% of backtest scenarios.
+**Gate 3 pass criteria**: Task 1 Top-1 ≥ 0.5, Task 3 F1 ≥ 0.6 on eval set.
 
 ---
 
 ### Hour 24–30 · Demo Polish → Gate 4
 
 ```bash
-# 11. Confirm demo auto-loads best WandB checkpoint
+# 12. Confirm demo auto-loads best checkpoint
 uv run python app/demo.py
-# Should print: [demo] Loaded checkpoint: <run_name>  (CRPS=x.xxxx)
+# Should print: [wandb_utils] Loaded model: <run_name>  (eval/top1=x.xxxx)
 
-# 12. Final smoke test
+# 13. Test all three Gradio actions manually:
+#     - "Predict Next Step" → top-5 bar chart shown
+#     - "Complete Sequence" → generated completion shown
+#     - "Check Anomaly" → perplexity score + verdict shown
+
+# 14. Final smoke test
 uv run python scripts/verify_setup.py
 ```
 
-**Gate 4 pass criteria**: live Gradio demo runs, best model loaded, backtest results visible.
+**Gate 4 pass criteria**: live demo runs, all three tasks working, best model loaded.
 
 ---
 
 ### Fallback (pipeline broken / < 4 hours remaining)
 
 ```bash
-# Zero-shot + post-processing rules — always works, always demonstrable
-uv run python app/demo.py   # auto-falls back to zero-shot if no checkpoint
+# Demo still works with a partially-trained or dummy checkpoint
+# If no WandB checkpoint: re-run gpt2_dummy.yaml (200 steps, ~2 min)
+WANDB_MODE=disabled uv run python src/train.py configs/exp/gpt2_dummy.yaml
+uv run python app/demo.py
 ```
 
 ---
@@ -103,16 +122,34 @@ uv run python app/demo.py   # auto-falls back to zero-shot if no checkpoint
 ## Architecture
 
 ```
-Data (yfinance / competition CSV)
-  └─ Experience Replay (31 assets, 2015–2025)
-       └─ Chronos T5-small (zero-shot CRPS=0.054 Sharpe=1.25)
-            └─ LoRA Fine-tune (r=8, cosine LR, grad clip → CRPS=0.053 Sharpe=1.50)
-                 └─ LangGraph Agent
-                      ├─ fetch_context  → yfinance 3yr daily prices
-                      ├─ forecast_node  → Chronos predict() → median/q10/q90
-                      ├─ risk_node      → expected return + vol regime + confidence
-                      └─ llm_decision   → Claude sonnet-4-6 → BUY/SELL/HOLD
-                           └─ Gradio Demo (port 7860, WandB best-run auto-load)
+Training Data (CSV)
+  IC / IGBT / MOSFET  ── 1 000 sequences each
+  generate_sequences.py ── unlimited augmentation
+       │
+       ▼
+  ProcessStepTokenizer
+  build vocab from all unique step names (~50–100)
+  encode: step name → int  /  decode: int → step name
+       │
+       ▼
+  GPT-2  (from scratch, custom vocab)
+  n_embd=256 · n_layer=6 · n_head=8 · ~2.5M params
+  n_positions=256  ·  causal LM objective
+       │
+       ▼
+  Training Loop
+  AdamW + cosine LR (warmup=300, decay to 1%)
+  grad clip=1.0  ·  labels=-100 on PAD  ·  BF16 on A100
+       │
+       ├─ WandB  (loss / top-1 / top-3 / mrr, every step)
+       │
+       ▼
+  Checkpoint  →  data/oof/<run_name>/model.pt + tokenizer.json
+       │
+       ├─ Task 1: Next-Step Prediction   → Top-1/3/5, MRR
+       ├─ Task 2: Sequence Completion    → Exact Match, Edit Dist, Token Acc
+       └─ Task 3: Anomaly Detection      → Perplexity → F1, ROC-AUC
+            └─ Gradio Demo (port 7860, auto-loads best WandB checkpoint)
 ```
 
 See `docs/architecture.html` for the full interactive diagram.
@@ -125,21 +162,20 @@ See `docs/architecture.html` for the full interactive diagram.
 # Environment check
 uv run python scripts/verify_setup.py
 
-# Download models (pre-competition)
-uv run python scripts/download_models.py
+# Smoke-test training (200 steps, no WandB)
+WANDB_MODE=disabled uv run python src/train.py configs/exp/gpt2_dummy.yaml
 
-# Zero-shot baseline
-uv run python src/train.py configs/exp/chronos_zeroshot_v0.yaml
+# Full training on competition data
+uv run python src/train.py configs/exp/gpt2_finetune_v1.yaml
 
-# LoRA fine-tune
-uv run python src/train.py configs/exp/chronos_lora_v1.yaml
-
-# Backtest
-bash scripts/run_backtest.sh AAPL chronos_lora_v1
-
-# Benchmark vs financial leaderboard
-uv run python scripts/benchmark_financial.py
-uv run python scripts/benchmark_kaggle_gresearch.py
+# Full evaluation (all 3 tasks)
+uv run python -c "
+from src.evaluator import run_full_eval
+from src.utils.wandb_utils import load_best_model
+model, tok, _, _ = load_best_model()
+results = run_full_eval(model, tok, 'data/raw/eval_input_valid.csv', 'data/raw/eval_input_anomaly.csv')
+import json; print(json.dumps(results, indent=2))
+"
 
 # Launch demo
 uv run python app/demo.py
@@ -147,18 +183,14 @@ uv run python app/demo.py
 
 ---
 
-## Config Checklist (fill before competition starts)
-
-After the briefing, update these fields in **both** config files:
+## Config Checklist (fill after data arrives)
 
 | Field | File | What to fill |
 |-------|------|-------------|
-| `dataset.path` | `configs/exp/chronos_*.yaml` | path to competition CSV |
-| `dataset.price_col` | same | column name containing prices |
-| `dataset.timestamp_col` | same | timestamp column (if present) |
-| `dataset.series_col` | same | symbol/id column for multi-series (null if single) |
-| `dataset.prediction_length` | same | forecast horizon from briefing |
-| `model.prediction_length` | same | same value |
+| `dataset.train_path` | `configs/exp/gpt2_finetune_v1.yaml` | path to training CSV folder |
+| `dataset.sequence_col` | same | column containing sequence ID (default: SEQUENCE_ID) |
+| `dataset.step_col` | same | column containing step name (default: STEP) |
+| `dataset.product_families` | same | list of family names matching file names |
 
 ---
 
@@ -166,23 +198,22 @@ After the briefing, update these fields in **both** config files:
 
 | Rule | Detail |
 |------|--------|
-| **Every run → WandB** | No silent runs. `wandb.init()` is called automatically. |
-| **Every run → data/oof/** | `[run_name]_preds.npy` saved automatically by `src/train.py`. |
-| **Walk-forward CV only** | No random K-fold. Windows defined in `configs/competition.yaml`. |
+| **Every run → WandB** | No silent runs. `wandb.init()` called in `src/train.py`. |
+| **Every run → data/oof/** | Checkpoint saved on best Top-1. |
 | **One variable at a time** | Ablations must differ by exactly one variable. |
-| **data/raw/ is immutable** | Raw data is never modified. Processing goes to `data/processed/`. |
+| **data/raw/ is immutable** | Raw data never modified. |
 | **Gates need human sign-off** | AI must not skip gates autonomously. |
 
 ---
 
-## Benchmark Results (pre-competition, yfinance data)
+## Submission Tasks Summary
 
-| Model | CRPS | Sharpe | Direction Acc | Return R² |
-|-------|------|--------|---------------|-----------|
-| Seasonal Naive | ~0.098 | ~0.0 | ~50% | ~0.000 |
-| Chronos ZS | 0.054 | +1.25 | 61% | 0.48 |
-| Chronos LoRA (200 steps) | 0.053 | +1.50 | 59% | 0.45 |
-| M4 competition winner (WQL ref) | 0.056 | — | — | — |
+| # | Task | Metric(s) | Eval File |
+|---|------|-----------|-----------|
+| 1 | Next-Step Prediction | Top-1/3/5, MRR | `eval_input_valid.csv` |
+| 2 | Sequence Completion | Exact Match, Norm. Edit Dist, Token Acc | `eval_input_valid.csv` |
+| 3 | Anomaly Detection | Binary Acc, Precision, Recall, F1, ROC-AUC | `eval_input_anomaly.csv` |
+| 4 | OOD Generalization | ID→OOD drop (organiser-only, post-submission) | hidden |
 
 ---
 
@@ -190,7 +221,9 @@ After the briefing, update these fields in **both** config files:
 
 | Member | Role |
 |--------|------|
-| Lea | Data pipeline, AI agents, cloud, DevOps |
-| Vladimir | Algorithms, system architecture, backtesting |
-| Kamila | Performance optimisation, parallel backtesting |
+| Lea | Data pipeline, model training, cloud, DevOps |
+| Vladimir | Algorithms, system architecture, evaluation framework |
+| Kamila | Performance optimisation, scaling experiments |
 | Thomas | Scrum master, coordination |
+
+**On-site mentor**: Simeon (Infineon)
