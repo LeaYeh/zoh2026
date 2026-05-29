@@ -417,109 +417,106 @@ body{background:#020617;color:#e2e8f0;font-family:'JetBrains Mono',monospace;pad
 
 <!-- Optimization panel -->
 <div class="opt-panel">
-  <h2>優化目標 — 優先級排序</h2>
+  <h2>Optimization Targets — All Resolved ✅</h2>
   <div class="opt-grid">
     <div class="opt-section">
-      <h3 class="bug-h">🔴 Critical Bugs — 競賽當天會炸</h3>
+      <h3 class="bug-h" style="opacity:.6">🟢 Critical Bugs — All Fixed</h3>
 
-      <div class="opt-item bug">
-        <span class="badge fix">P0</span>
-        <strong>rng.choice(pool) — train.py:269</strong>
-        inhomogeneous numpy array list → ValueError at runtime when pool has mixed-length series.<br>
-        Fix: <code>s = pool[rng.integers(0, len(pool))]</code>
+      <div class="opt-item bug" style="opacity:.55">
+        <span class="badge fix">✅ DONE</span>
+        <strong>rng.choice(pool) — train.py</strong>
+        Inhomogeneous numpy list → ValueError on mixed-length series.<br>
+        Fixed: <code>s = pool[rng.integers(0, len(pool))]</code>
       </div>
 
-      <div class="opt-item bug">
-        <span class="badge fix">P0</span>
-        <strong>fetch_context_node 永遠回傳 {} — nodes.py:10</strong>
-        forecast_node 拿到空 prices → 跳過預測，決策全靠 fallback rule。<br>
-        Fix: 接入 yfinance（暫用）或競賽 data API（正式用）
+      <div class="opt-item bug" style="opacity:.55">
+        <span class="badge fix">✅ DONE</span>
+        <strong>fetch_context_node always returned {} — nodes.py</strong>
+        forecast_node received empty prices → silently skipped all predictions.<br>
+        Fixed: fetches 3yr daily OHLCV via yfinance; fills prices + pred_len.
       </div>
 
-      <div class="opt-item bug">
-        <span class="badge fix">P1</span>
-        <strong>win_rate 計算錯誤 — backtesting.py:55</strong>
-        算的是 BUY 操作次數，不是「賺錢交易 / 總交易」。<br>
-        Fix: 記錄買入價，賣出時比較 exit_price &gt; entry_price
+      <div class="opt-item bug" style="opacity:.55">
+        <span class="badge fix">✅ DONE</span>
+        <strong>win_rate counted BUY actions — backtesting.py</strong>
+        Was counting number of BUY calls, not profitable completed trades.<br>
+        Fixed: tracks entry_price, compares exit_price &gt; entry_price at SELL.
       </div>
 
-      <h3 class="perf-h" style="margin-top:14px">🟡 Performance — A100 效果最大化</h3>
+      <h3 class="perf-h" style="margin-top:14px;opacity:.6">🟢 Performance — All Done</h3>
 
-      <div class="opt-item perf">
-        <span class="badge opt">P1</span>
-        <strong>無 LR Scheduler</strong>
-        固定 lr=1e-4 在 step 500+ 容易震盪不收斂。<br>
-        加 cosine decay：前 100 steps warmup → step 1000 decay to 1e-6。<br>
-        預期 val CRPS 再降 5~10%。
+      <div class="opt-item perf" style="opacity:.55">
+        <span class="badge opt">✅ DONE</span>
+        <strong>Cosine LR Scheduler with warmup</strong>
+        Linear warmup for 100 steps → cosine decay to lr×0.01 at step 1000.<br>
+        Logs train/lr to WandB. Expected val CRPS improvement: 5–10%.
       </div>
 
-      <div class="opt-item perf">
-        <span class="badge opt">P2</span>
-        <strong>無 gradient clipping</strong>
-        極端金融 batch 可能梯度爆炸（loss 突然飆高）。<br>
-        加 <code>torch.nn.utils.clip_grad_norm_(params, 1.0)</code> 在 backward 後。
+      <div class="opt-item perf" style="opacity:.55">
+        <span class="badge opt">✅ DONE</span>
+        <strong>Gradient clipping</strong>
+        <code>clip_grad_norm_(params, 1.0)</code> after backward prevents loss spikes on extreme financial batches.
       </div>
 
-      <div class="opt-item perf">
-        <span class="badge opt">P2</span>
-        <strong>逐條 series 推論，沒有 batching</strong>
-        Chronos 支援批次輸入 list[Tensor]。<br>
-        Eval 時可一次送 8 條，推論速度提升 3~4×（A100 更明顯）。
+      <div class="opt-item perf" style="opacity:.55">
+        <span class="badge opt">✅ DONE</span>
+        <strong>Batched inference</strong>
+        <code>_predict_batched()</code> sends list[Tensor] in configurable chunks (default 16).<br>
+        3–4× faster eval on A100; used in both _eval_val_crps and main().
       </div>
     </div>
 
     <div class="opt-section">
-      <h3 class="arch-h">🟣 Architecture Gaps — 完整度</h3>
+      <h3 class="arch-h" style="opacity:.6">🟢 Architecture Gaps — All Closed</h3>
 
-      <div class="opt-item arch">
-        <span class="badge stub">STUB</span>
-        <strong>dataset loader 不支援 competition 格式</strong>
-        load_dataset() 只有 dummy / electricity / gluonts。<br>
-        競賽 briefing 後加對應 loader（可能是 CSV with timestamp+price）。
+      <div class="opt-item arch" style="opacity:.55">
+        <span class="badge stub">✅ DONE</span>
+        <strong>Generic CSV dataset loader</strong>
+        load_dataset() now accepts name="csv" with price_col / timestamp_col / series_col.<br>
+        Handles single- and multi-series files. Ready for competition data format.
       </div>
 
-      <div class="opt-item arch">
-        <span class="badge stub">STUB</span>
-        <strong>patchtst_finetune.py 死碼</strong>
-        PatchTST 已決定 drop，但 src/forecasting/ 裡還在。<br>
-        可移除或改名為 _dropped_patchtst.py 避免誤用。
+      <div class="opt-item arch" style="opacity:.55">
+        <span class="badge stub">✅ DONE</span>
+        <strong>Removed dead PatchTST code</strong>
+        src/forecasting/patchtst_finetune.py deleted (PatchTST dropped by design decision).
       </div>
 
-      <div class="opt-item arch">
-        <span class="badge stub">STUB</span>
-        <strong>risk_node 沒有 volatility regime 偵測</strong>
-        目前只有靜態 ci_width 計算。<br>
-        可加 rolling_vol 判斷「現在是高波動期嗎？」→ 影響 confidence。
+      <div class="opt-item arch" style="opacity:.55">
+        <span class="badge stub">✅ DONE</span>
+        <strong>Volatility regime detection in risk_node</strong>
+        Rolling 20-day log-return std vs 252-day baseline → vol_regime high/normal/low.<br>
+        Scales confidence 50% in high-vol; widens BUY threshold 1.5× in crashes.
       </div>
 
-      <h3 class="perf-h" style="margin-top:14px">⚡ Quick Wins — 競賽當天加分</h3>
+      <h3 class="perf-h" style="margin-top:14px">⚡ Quick Wins — Competition Day</h3>
 
       <div class="opt-item perf">
         <span class="badge opt">WIN</span>
         <strong>T5-small → T5-base ablation</strong>
-        T5-base M4 WQL=0.057 vs small=0.062（論文數字）。<br>
-        競賽資料到位後立刻跑，如果顯著改善就換 base。
+        T5-base M4 WQL=0.057 vs small=0.062 (paper numbers).<br>
+        Run immediately once competition data arrives; switch if improvement is significant.
       </div>
 
       <div class="opt-item perf">
         <span class="badge opt">WIN</span>
         <strong>Ensemble ZS + LoRA</strong>
-        各預測 50 samples 合併成 100，CRPS variance 下降。<br>
-        實作 2 行：<code>np.concatenate([samples_zs, samples_ft], axis=0)</code>
+        Combine 50 samples each → 100 total; reduces CRPS variance.<br>
+        Two lines: <code>np.concatenate([samples_zs, samples_ft], axis=0)</code>
       </div>
 
       <div class="opt-item perf">
         <span class="badge opt">WIN</span>
-        <strong>競賽 metric-specific 調整</strong>
-        若競賽用 Sharpe → 在 risk_node 加方向信號強度 weighting。<br>
-        若競賽用 CRPS → 現有架構已最優，直接跑。<br>
-        若競賽用 Pearson r → 換成 directional loss fine-tune。
+        <strong>Competition metric-specific tuning</strong>
+        Sharpe → add directional signal weighting in risk_node.<br>
+        CRPS → current architecture is already optimal, just run.<br>
+        Pearson r → switch to directional loss fine-tune.
       </div>
     </div>
   </div>
 </div>
 
-<div class="footer">ZOH 2026 · Track 03 · Chronos T5-small + LoRA · LangGraph · Gradio &nbsp;|&nbsp; 2026-05-29 &nbsp;|&nbsp; 3 critical bugs · 3 perf opts · 3 arch gaps · 3 quick wins</div>
+<div class="footer">ZOH 2026 · Track 03 · Chronos T5-small + LoRA · LangGraph · Gradio &nbsp;|&nbsp; 2026-05-29 &nbsp;|&nbsp; all bugs fixed · all perf opts done · 3 quick wins remaining</div>
 </div>
 <script>
 function getRect(){
