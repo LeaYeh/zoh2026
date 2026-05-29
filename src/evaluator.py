@@ -1,150 +1,143 @@
-"""Unified evaluator for probabilistic time-series forecasts.
+"""Track 1 evaluator — runs all three submission tasks on a trained model.
 
 Usage:
-    metrics = evaluate(predictions, ground_truth, naive_scale)
-    # predictions: np.ndarray shape (n_series, n_samples, pred_len)  — sample-based
-    # ground_truth: np.ndarray shape (n_series, pred_len)
-    # naive_scale: np.ndarray shape (n_series,) — mean |diff| of training series (for MASE)
+    from src.evaluator import run_full_eval
+    results = run_full_eval(model, tokenizer, eval_valid_csv, eval_anomaly_csv)
+
+Tasks
+-----
+Task 1  Next-Step Prediction  eval_input_valid.csv   (truncated at 60% and 80%)
+Task 2  Sequence Completion   eval_input_valid.csv   (complete from truncation point)
+Task 3  Anomaly Detection     eval_input_anomaly.csv (labelled valid=0 / anomaly=1)
 """
-
 from __future__ import annotations
+from pathlib import Path
+
 import numpy as np
-from dataclasses import dataclass, asdict
+import pandas as pd
+import torch
+
+from src.data.process_loader import ProcessStepTokenizer
+from src.models.process_lm import (
+    GPT2LMHeadModel,
+    predict_next_step,
+    complete_sequence,
+    anomaly_score,
+)
+from src.evaluation.process_metrics import (
+    Task1Metrics, Task2Metrics, Task3Metrics,
+    evaluate_next_step, evaluate_completion, evaluate_anomaly,
+)
 
 
-QUANTILES = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+def _load_eval_valid(
+    csv_path: str | Path,
+    sequence_col: str = "SEQUENCE_ID",
+    step_col: str = "STEP",
+    truncation_col: str = "TRUNCATION",
+) -> list[dict]:
+    """Load eval_input_valid.csv.
 
-
-@dataclass
-class Metrics:
-    mae: float
-    mase: float
-    rmse: float
-    crps: float
-    pinball_10: float
-    pinball_50: float
-    pinball_90: float
-    coverage_80: float  # fraction of actuals inside [q10, q90]
-    coverage_90: float  # fraction inside [q05, q95]
-
-    def to_dict(self) -> dict:
-        return asdict(self)
-
-
-# ── point metrics ────────────────────────────────────────────────────────────
-
-def _mae(median: np.ndarray, truth: np.ndarray) -> float:
-    return float(np.mean(np.abs(median - truth)))
-
-
-def _rmse(median: np.ndarray, truth: np.ndarray) -> float:
-    return float(np.sqrt(np.mean((median - truth) ** 2)))
-
-
-def _mase(median: np.ndarray, truth: np.ndarray, naive_scale: np.ndarray) -> float:
-    """MASE = MAE / naive_scale.  naive_scale = mean |y_t - y_{t-1}| on train."""
-    abs_err = np.abs(median - truth).mean(axis=-1)          # (n_series,)
-    safe_scale = np.where(naive_scale == 0, 1.0, naive_scale)
-    return float(np.mean(abs_err / safe_scale))
-
-
-# ── probabilistic metrics ────────────────────────────────────────────────────
-
-def _pinball(samples: np.ndarray, truth: np.ndarray, q: float) -> float:
-    """Pinball / quantile loss. samples: (n_series, n_samples, pred_len)."""
-    forecast_q = np.quantile(samples, q, axis=1)            # (n_series, pred_len)
-    err = truth - forecast_q
-    loss = np.where(err >= 0, q * err, (q - 1) * err)
-    return float(np.mean(loss))
-
-
-def _crps(samples: np.ndarray, truth: np.ndarray) -> float:
-    """Energy-form CRPS: E|X-y| - 0.5*E|X-X'|.  O(n_samples^2) in last term."""
-    # (n_series, n_samples, pred_len)
-    n_samples = samples.shape[1]
-    truth_exp = truth[:, np.newaxis, :]                     # (n_series, 1, pred_len)
-    term1 = np.abs(samples - truth_exp).mean(axis=1)        # (n_series, pred_len)
-
-    # pairwise |X - X'| via broadcasting — use subset if n_samples > 100
-    s = samples if n_samples <= 100 else samples[:, :100, :]
-    diff = np.abs(s[:, :, np.newaxis, :] - s[:, np.newaxis, :, :])  # expensive
-    term2 = diff.mean(axis=(1, 2))                          # (n_series, pred_len)
-
-    return float(np.mean(term1 - 0.5 * term2))
-
-
-def _interval_coverage(samples: np.ndarray, truth: np.ndarray, lo_q: float, hi_q: float) -> float:
-    lo = np.quantile(samples, lo_q, axis=1)
-    hi = np.quantile(samples, hi_q, axis=1)
-    inside = (truth >= lo) & (truth <= hi)
-    return float(inside.mean())
-
-
-# ── public API ───────────────────────────────────────────────────────────────
-
-def evaluate(
-    predictions: np.ndarray,
-    ground_truth: np.ndarray,
-    naive_scale: np.ndarray | None = None,
-) -> Metrics:
+    Returns list of dicts:
+      {sequence_id, partial_steps, true_next_step, true_remaining, truncation}
     """
-    Args:
-        predictions:  (n_series, n_samples, pred_len)  sample draws
-        ground_truth: (n_series, pred_len)
-        naive_scale:  (n_series,)  mean |diff| on training window (for MASE)
-                      If None, MASE is computed with scale=1 (same as MAE).
+    df = pd.read_csv(csv_path)
+    col_map = {c.upper(): c for c in df.columns}
+    seq_col  = col_map.get(sequence_col.upper(),  sequence_col)
+    step_col_actual = col_map.get(step_col.upper(), step_col)
+    trunc_col = col_map.get(truncation_col.upper(), truncation_col)
+
+    records = []
+    for seq_id, group in df.groupby(seq_col, sort=False):
+        steps = group[step_col_actual].astype(str).tolist()
+        trunc = float(group[trunc_col].iloc[0]) if trunc_col in group.columns else 0.6
+        cut = max(1, int(len(steps) * trunc))
+        records.append({
+            "sequence_id":   seq_id,
+            "partial_steps": steps[:cut],
+            "true_next":     steps[cut] if cut < len(steps) else None,
+            "true_remaining": steps[cut:],
+            "truncation":    trunc,
+        })
+    return records
+
+
+def _load_eval_anomaly(
+    csv_path: str | Path,
+    sequence_col: str = "SEQUENCE_ID",
+    step_col: str = "STEP",
+    label_col: str = "LABEL",
+) -> list[dict]:
+    """Load eval_input_anomaly.csv.
+
+    Returns list of dicts: {sequence_id, steps, label}
+    label: 0=valid, 1=anomaly
     """
-    if naive_scale is None:
-        naive_scale = np.ones(predictions.shape[0])
+    df = pd.read_csv(csv_path)
+    col_map = {c.upper(): c for c in df.columns}
+    seq_col  = col_map.get(sequence_col.upper(), sequence_col)
+    step_col_actual = col_map.get(step_col.upper(), step_col)
+    lbl_col  = col_map.get(label_col.upper(), label_col)
 
-    median = np.median(predictions, axis=1)                 # (n_series, pred_len)
-
-    return Metrics(
-        mae=_mae(median, ground_truth),
-        mase=_mase(median, ground_truth, naive_scale),
-        rmse=_rmse(median, ground_truth),
-        crps=_crps(predictions, ground_truth),
-        pinball_10=_pinball(predictions, ground_truth, 0.1),
-        pinball_50=_pinball(predictions, ground_truth, 0.5),
-        pinball_90=_pinball(predictions, ground_truth, 0.9),
-        coverage_80=_interval_coverage(predictions, ground_truth, 0.1, 0.9),
-        coverage_90=_interval_coverage(predictions, ground_truth, 0.05, 0.95),
-    )
+    records = []
+    for seq_id, group in df.groupby(seq_col, sort=False):
+        steps = group[step_col_actual].astype(str).tolist()
+        label = int(group[lbl_col].iloc[0]) if lbl_col in group.columns else 0
+        records.append({"sequence_id": seq_id, "steps": steps, "label": label})
+    return records
 
 
-# ── time-series CV split (no leakage) ────────────────────────────────────────
+def run_full_eval(
+    model: GPT2LMHeadModel,
+    tokenizer: ProcessStepTokenizer,
+    eval_valid_csv: str | Path,
+    eval_anomaly_csv: str | Path,
+    device: str | torch.device = "cpu",
+    top_k: int = 5,
+) -> dict:
+    """Run all three tasks and return a results dict."""
+    device = torch.device(device) if isinstance(device, str) else device
+    model = model.to(device)
+    model.eval()
 
-def rolling_origin_splits(
-    n: int,
-    pred_len: int,
-    n_windows: int,
-    min_train: int | None = None,
-) -> list[tuple[np.ndarray, np.ndarray]]:
-    """
-    Returns list of (train_idx, test_idx) tuples.
-    Each test window is pred_len steps; test windows do not overlap.
-    Train is expanding (all data before the test window).
-    """
-    if min_train is None:
-        min_train = max(pred_len * 2, n // 4)
+    results: dict = {}
 
-    total_test = pred_len * n_windows
-    if n - min_train < total_test:
-        raise ValueError(
-            f"Not enough data: need {min_train + total_test} points, got {n}."
-        )
+    # ── Task 1 & 2: valid sequences ──────────────────────────────────────────
+    valid_records = _load_eval_valid(eval_valid_csv)
+    ranked_preds: list[list[str]] = []
+    next_targets: list[str]       = []
+    completions:  list[list[str]] = []
+    comp_targets: list[list[str]] = []
 
-    splits = []
-    for i in range(n_windows):
-        test_end = n - pred_len * (n_windows - 1 - i)
-        test_start = test_end - pred_len
-        train_idx = np.arange(test_start)
-        test_idx = np.arange(test_start, test_end)
-        splits.append((train_idx, test_idx))
-    return splits
+    for rec in valid_records:
+        partial = rec["partial_steps"]
+        preds   = predict_next_step(model, tokenizer, partial, top_k=top_k, device=device)
+        ranked_preds.append([p for p, _ in preds])
+        if rec["true_next"]:
+            next_targets.append(rec["true_next"])
 
+        if rec["true_remaining"]:
+            completed = complete_sequence(
+                model, tokenizer, partial,
+                max_new_steps=len(rec["true_remaining"]) + 10,
+                device=device,
+            )
+            completions.append(completed)
+            comp_targets.append(rec["true_remaining"])
 
-def naive_scale_from_series(series: np.ndarray, freq: int = 1) -> float:
-    """Mean absolute seasonal difference. Use freq=1 for non-seasonal."""
-    diffs = np.abs(np.diff(series[::freq]))
-    return float(diffs.mean()) if len(diffs) > 0 else 1.0
+    t1 = evaluate_next_step(ranked_preds, next_targets)
+    t2 = evaluate_completion(completions, comp_targets)
+    results["task1"] = t1.to_dict()
+    results["task2"] = t2.to_dict()
+
+    # ── Task 3: anomaly detection ─────────────────────────────────────────────
+    anomaly_records = _load_eval_anomaly(eval_anomaly_csv)
+    scores = [
+        anomaly_score(model, tokenizer, rec["steps"], device=device)
+        for rec in anomaly_records
+    ]
+    labels = [rec["label"] for rec in anomaly_records]
+    t3 = evaluate_anomaly(scores, labels)
+    results["task3"] = t3.to_dict()
+
+    return results

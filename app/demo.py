@@ -1,26 +1,26 @@
-"""Gradio demo — ZOH 2026 Track 03 Trading Agent.
+"""Gradio demo — ZOH 2026 Track 1: Industrial Process Sequence Modeling.
 
-Tab 1 (Trading Agent): enter a ticker → forecast chart + BUY/SELL/HOLD badge + risk metrics.
-Tab 2 (Training Monitor): WandB run history table + one-click training launcher with live log.
+Tab 1 (Process Agent): enter a partial process sequence →
+  - Top-5 next-step predictions with probability bar chart
+  - Full sequence completion
+  - Anomaly detection verdict
+
+Tab 2 (Training Monitor): WandB run history + one-click training launcher
+  with live log streaming.
 """
 from __future__ import annotations
 
-import json
 import os
-import re
 import subprocess
 from pathlib import Path
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import numpy as np
-import anthropic
 import gradio as gr
 from dotenv import load_dotenv
 
-from src.agent.graph import run as run_agent
-from src.utils.wandb_utils import load_best_pipeline
+from src.utils.wandb_utils import load_best_model
 
 load_dotenv()
 
@@ -28,172 +28,146 @@ _REPO_ROOT = Path(__file__).parent.parent
 
 # ── model loading ─────────────────────────────────────────────────────────────
 
-_pipeline, _best_run, _best_crps = load_best_pipeline()
-if _best_run:
-    print(f"[demo] Loaded checkpoint: {_best_run}  (CRPS={_best_crps:.4f})")
+_model, _tokenizer, _best_run, _best_top1 = load_best_model()
+if _best_run and _model is not None:
+    print(f"[demo] Loaded model: {_best_run}  (top1={_best_top1:.4f})")
 else:
-    print("[demo] No local checkpoint found — running zero-shot.")
-
-_llm_client = None
-if os.getenv("ANTHROPIC_API_KEY"):
-    _llm_client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    print("[demo] No trained model found — train first via Tab 2.")
 
 _CONFIGS = [
-    "chronos_zeroshot_v0.yaml",
-    "chronos_lora_v1.yaml",
-    "chronos_zeroshot_dummy.yaml",
-    "chronos_lora_dummy.yaml",
-    "chronos_zeroshot_electricity.yaml",
-    "chronos_lora_electricity.yaml",
+    "gpt2_dummy.yaml",
+    "gpt2_finetune_v1.yaml",
 ]
 
-_QUICK_EXAMPLES = ["AAPL", "TSLA", "NVDA", "BTC-USD", "ETH-USD"]
+_QUICK_EXAMPLES = [
+    "RECEIVE WAFER LOT\nLOT IDENTIFICATION\nINITIAL WAFER INSPECTION",
+    "RECEIVE WAFER LOT\nLOT IDENTIFICATION\nINITIAL WAFER INSPECTION\nMEASURE INITIAL THICKNESS\nTHERMAL OXIDATION",
+    "RECEIVE WAFER LOT\nLOT IDENTIFICATION",
+]
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
-def _fetch_current_price(symbol: str) -> float | None:
-    import yfinance as yf
-    df = yf.download(symbol, period="5d", interval="1d", auto_adjust=True, progress=False)
-    if df.empty:
-        return None
-    close = df["Close"]
-    if hasattr(close, "squeeze"):
-        close = close.squeeze()
-    vals = close.dropna()
-    return float(vals.iloc[-1]) if len(vals) else None
+def _parse_steps(text: str) -> list[str]:
+    """Parse newline- or comma-separated step names."""
+    sep = "\n" if "\n" in text else ","
+    return [s.strip() for s in text.split(sep) if s.strip()]
 
 
-def _make_forecast_chart(
-    prices: list[float],
-    median: list[float],
-    q10: list[float],
-    q90: list[float],
-    symbol: str,
-) -> plt.Figure:
-    hist = prices[-90:] if len(prices) > 90 else list(prices)
-    n_hist = len(hist)
+def _bar_chart(predictions: list[tuple[str, float]], title: str) -> plt.Figure:
+    steps = [p for p, _ in predictions]
+    probs = [v for _, v in predictions]
 
-    # Connect forecast from the last historical point
-    x_hist = list(range(n_hist))
-    x_fore = list(range(n_hist - 1, n_hist - 1 + len(median)))
-    fore_med = [hist[-1]] + list(median)[:-1]
-    fore_q10 = [hist[-1]] + list(q10)[:-1]
-    fore_q90 = [hist[-1]] + list(q90)[:-1]
-
-    fig, ax = plt.subplots(figsize=(10, 4))
+    fig, ax = plt.subplots(figsize=(7, max(2.5, len(steps) * 0.5)))
     fig.patch.set_facecolor("#0f172a")
     ax.set_facecolor("#0f172a")
 
-    ax.plot(x_hist, hist, color="#22d3ee", linewidth=1.5, label="History")
-    ax.plot(x_fore, fore_med, color="#34d399", linewidth=1.5, linestyle="--", label="Forecast (median)")
-    ax.fill_between(x_fore, fore_q10, fore_q90, alpha=0.25, color="#34d399", label="80% CI")
-    ax.axvline(x=n_hist - 1, color="#94a3b8", linestyle=":", linewidth=1, alpha=0.6)
+    bars = ax.barh(steps[::-1], probs[::-1], color="#22d3ee", edgecolor="none")
+    for bar, prob in zip(bars, probs[::-1]):
+        ax.text(bar.get_width() + 0.005, bar.get_y() + bar.get_height() / 2,
+                f"{prob:.1%}", va="center", color="white", fontsize=9)
 
-    ax.set_title(f"{symbol} — 30-Day Price Forecast", color="white", fontsize=12, pad=10)
-    ax.tick_params(colors="#94a3b8", labelsize=8)
-    ax.set_xlabel("Days", color="#94a3b8", fontsize=9)
-    ax.set_ylabel("Price", color="#94a3b8", fontsize=9)
-    for key, spine in ax.spines.items():
-        if key in ("top", "right"):
-            spine.set_visible(False)
-        else:
-            spine.set_color("#1e293b")
-    leg = ax.legend(facecolor="#1e293b", labelcolor="white", fontsize=8, framealpha=0.8)
-    leg.get_frame().set_edgecolor("#1e293b")
+    ax.set_xlim(0, max(probs) * 1.25 + 0.01)
+    ax.set_title(title, color="white", fontsize=11, pad=8)
+    ax.tick_params(colors="#94a3b8", labelsize=9)
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+    ax.set_xlabel("Probability", color="#94a3b8", fontsize=9)
 
     plt.tight_layout()
     return fig
 
 
-def _decision_badge(action: str, confidence: float | None = None) -> str:
-    palette = {
-        "BUY":  ("#22c55e", "rgba(34,197,94,0.12)"),
-        "SELL": ("#ef4444", "rgba(239,68,68,0.12)"),
-        "HOLD": ("#eab308", "rgba(234,179,8,0.12)"),
-    }
-    color, bg = palette.get(action, ("#94a3b8", "rgba(148,163,184,0.08)"))
-    conf_str = f"<p style='color:#94a3b8;margin:6px 0 0;font-size:0.9rem'>{confidence:.0%} confidence</p>" if confidence is not None else ""
+def _no_model_html() -> str:
     return (
-        f'<div style="text-align:center;padding:24px 0;border:2px solid {color};'
-        f'border-radius:12px;background:{bg};margin:8px 0">'
-        f'<span style="font-size:3rem;font-weight:700;color:{color}">{action}</span>'
-        f'{conf_str}</div>'
+        '<div style="color:#eab308;border:1px solid #eab308;border-radius:8px;'
+        'padding:16px;margin:8px 0">'
+        '<b>No trained model loaded.</b><br>'
+        'Go to <b>Training Monitor</b> tab → select <code>gpt2_dummy.yaml</code>'
+        ' → Start Training, then refresh the page.</div>'
     )
 
 
-# ── tab 1: trading agent ──────────────────────────────────────────────────────
+# ── tab 1 handlers ────────────────────────────────────────────────────────────
 
-def analyze_symbol(symbol: str):
-    symbol = symbol.strip().upper()
-    if not symbol:
-        return (
-            '<div style="color:#94a3b8;text-align:center;padding:30px">Enter a ticker symbol above</div>',
-            None,
-            "",
-            "",
-        )
-
-    current_price = _fetch_current_price(symbol)
-    if current_price is None:
-        err = f'<div style="color:#ef4444;text-align:center;padding:20px">Could not fetch price for <b>{symbol}</b></div>'
-        return err, None, f"yfinance returned no data for {symbol}", ""
-
-    try:
-        result = run_agent(
-            symbol=symbol,
-            current_price=current_price,
-            pipeline=_pipeline,
-            llm_client=_llm_client,
-        )
-    except Exception as exc:
-        err = f'<div style="color:#ef4444;padding:16px">Error running agent: {exc}</div>'
-        return err, None, str(exc), ""
-
-    # --- decision badge ---
-    raw_decision = result.get("decision", {})
-    if isinstance(raw_decision, str):
-        m = re.search(r'\{.*\}', raw_decision, re.DOTALL)
-        decision_dict = json.loads(m.group()) if m else {}
-        reasoning_text = raw_decision
-    else:
-        decision_dict = raw_decision or {}
-        reasoning_text = json.dumps(decision_dict, indent=2)
-
-    action = decision_dict.get("action", "HOLD")
-    confidence = decision_dict.get("confidence")
-    reasoning = decision_dict.get("reasoning", "")
-    badge = _decision_badge(action, confidence)
-    if reasoning:
-        badge += f'<p style="color:#cbd5e1;padding:0 16px;font-size:0.9rem">{reasoning}</p>'
-
-    # --- forecast chart ---
-    forecast = result.get("forecast", {})
-    prices = result.get("market_context", {}).get("prices", [])
-    chart = None
-    if prices and forecast.get("median"):
-        chart = _make_forecast_chart(
-            prices,
-            forecast["median"],
-            forecast.get("q10", forecast["median"]),
-            forecast.get("q90", forecast["median"]),
-            symbol,
-        )
-
-    # --- risk summary ---
-    risk = result.get("risk", {})
-    risk_text = (
-        f"Expected return : {risk.get('expected_return', 0): .2%}\n"
-        f"Downside risk   : {risk.get('downside_risk', 0): .2%}\n"
-        f"CI width        : {risk.get('ci_width', 0):.4f}\n"
-        f"Vol regime      : {risk.get('vol_regime', 'unknown')}\n"
-        f"Confidence      : {risk.get('confidence', 0):.2%}"
+def predict_next(sequence_text: str):
+    if _model is None or _tokenizer is None:
+        return _no_model_html(), None, ""
+    steps = _parse_steps(sequence_text)
+    if not steps:
+        return '<div style="color:#94a3b8;padding:12px">Enter at least one step.</div>', None, ""
+    from src.models.process_lm import predict_next_step
+    preds = predict_next_step(_model, _tokenizer, steps, top_k=5)
+    chart = _bar_chart(preds, f"Top-5 Next Steps  (after {len(steps)} steps)")
+    top_step = preds[0][0] if preds else "—"
+    badge = (
+        f'<div style="border:2px solid #22d3ee;border-radius:8px;padding:14px;'
+        f'background:rgba(34,211,238,0.08);text-align:center">'
+        f'<span style="color:#94a3b8;font-size:0.8rem">Top-1 prediction</span><br>'
+        f'<span style="color:#22d3ee;font-size:1.6rem;font-weight:700">{top_step}</span>'
+        f'</div>'
     )
+    return badge, chart, ""
 
-    return badge, chart, reasoning_text, risk_text
+
+def complete_seq(sequence_text: str):
+    if _model is None or _tokenizer is None:
+        return _no_model_html(), None, ""
+    steps = _parse_steps(sequence_text)
+    if not steps:
+        return '<div style="color:#94a3b8;padding:12px">Enter at least one step.</div>', None, ""
+    from src.models.process_lm import complete_sequence
+    completed = complete_sequence(_model, _tokenizer, steps, max_new_steps=80)
+    full_seq  = steps + completed
+    numbered  = "\n".join(f"{i+1:>3}. {s}" for i, s in enumerate(full_seq))
+    sep_line  = f"{'─'*4} partial ({len(steps)} steps) above · generated ({len(completed)} steps) below {'─'*4}"
+    display   = "\n".join(f"{i+1:>3}. {s}" for i, s in enumerate(steps))
+    display  += f"\n{sep_line}\n"
+    display  += "\n".join(f"{len(steps)+i+1:>3}. {s}" for i, s in enumerate(completed))
+    badge = (
+        f'<div style="border:2px solid #34d399;border-radius:8px;padding:14px;'
+        f'background:rgba(52,211,153,0.08)">'
+        f'<span style="color:#34d399;font-weight:700">Completed</span> '
+        f'<span style="color:#94a3b8">— {len(completed)} steps generated  '
+        f'({len(full_seq)} total)</span></div>'
+    )
+    return badge, None, display
 
 
-# ── tab 2: training monitor ───────────────────────────────────────────────────
+def check_anomaly(sequence_text: str):
+    if _model is None or _tokenizer is None:
+        return _no_model_html(), None, ""
+    steps = _parse_steps(sequence_text)
+    if len(steps) < 2:
+        return '<div style="color:#94a3b8;padding:12px">Enter at least 2 steps.</div>', None, ""
+    from src.models.process_lm import anomaly_score
+    score = anomaly_score(_model, _tokenizer, steps)
+    # heuristic threshold: perplexity > 50 is suspicious (tune after training)
+    is_anomaly = score > 50.0
+    color  = "#ef4444" if is_anomaly else "#22c55e"
+    label  = "ANOMALY DETECTED" if is_anomaly else "VALID SEQUENCE"
+    badge  = (
+        f'<div style="border:2px solid {color};border-radius:8px;padding:16px;'
+        f'background:rgba(0,0,0,0.2);text-align:center">'
+        f'<span style="color:{color};font-size:1.5rem;font-weight:700">{label}</span><br>'
+        f'<span style="color:#94a3b8;font-size:0.9rem">perplexity = {score:.1f}</span>'
+        f'</div>'
+    )
+    # bar chart showing single score vs threshold
+    fig, ax = plt.subplots(figsize=(6, 1.5))
+    fig.patch.set_facecolor("#0f172a")
+    ax.set_facecolor("#0f172a")
+    ax.barh(["perplexity"], [min(score, 200)], color=color, edgecolor="none")
+    ax.axvline(x=50, color="#eab308", linestyle="--", linewidth=1.2, label="threshold=50")
+    ax.set_xlim(0, 210)
+    ax.tick_params(colors="#94a3b8", labelsize=9)
+    for spine in ax.spines.values(): spine.set_visible(False)
+    ax.legend(facecolor="#1e293b", labelcolor="white", fontsize=8)
+    plt.tight_layout()
+    return badge, fig, ""
+
+
+# ── tab 2 handlers ────────────────────────────────────────────────────────────
 
 def get_run_history() -> list[list]:
     try:
@@ -203,13 +177,14 @@ def get_run_history() -> list[list]:
         runs = list(api.runs(project, filters={"state": "finished"}))[:15]
         rows = []
         for r in runs:
-            crps = r.summary.get("eval/crps")
-            sharpe = r.summary.get("eval/sharpe")
+            top1   = r.summary.get("eval/best_top1") or r.summary.get("eval/top1")
+            top3   = r.summary.get("eval/top3")
+            steps  = r.config.get("training", {}).get("steps", "—")
             rows.append([
                 r.name or r.id,
-                f"{crps:.4f}" if isinstance(crps, float) else "—",
-                f"{sharpe:.3f}" if isinstance(sharpe, float) else "—",
-                str(r.config.get("training", {}).get("steps", "—")),
+                f"{top1:.4f}" if isinstance(top1, float) else "—",
+                f"{top3:.4f}" if isinstance(top3, float) else "—",
+                str(steps),
                 r.state,
             ])
         return rows or [["No finished runs", "", "", "", ""]]
@@ -218,7 +193,6 @@ def get_run_history() -> list[list]:
 
 
 def launch_training(config_name: str):
-    """Generator: streams training stdout line-by-line to the log textbox."""
     cmd = ["uv", "run", "python", "src/train.py", f"configs/exp/{config_name}"]
     proc = subprocess.Popen(
         cmd,
@@ -235,65 +209,68 @@ def launch_training(config_name: str):
         output += line
         yield output
     proc.wait()
-    yield output + f"\n\n[Process exited with code {proc.returncode}]"
+    yield output + f"\n\n[Exited with code {proc.returncode}]"
 
 
-# ── UI layout ─────────────────────────────────────────────────────────────────
+# ── UI ────────────────────────────────────────────────────────────────────────
 
 _ckpt_label = (
-    f"LoRA checkpoint: <b>{_best_run}</b> &nbsp;·&nbsp; CRPS = {_best_crps:.4f}"
-    if _best_run
-    else "zero-shot (no local checkpoint)"
+    f"model: <b>{_best_run}</b> &nbsp;·&nbsp; Top-1 = {_best_top1:.4f}"
+    if (_best_run and _best_top1 is not None)
+    else "no model loaded — train first"
 )
 
-with gr.Blocks(title="ZOH 2026 — Track 03 Trading Agent") as demo:
+with gr.Blocks(title="ZOH 2026 — Track 1: Industrial AI") as demo:
 
     gr.HTML(
-        '<div style="padding:16px 0 8px">'
-        '<h1 style="margin:0;font-size:1.6rem;font-weight:700">ZOH 2026 · Track 03 — Trading Agent</h1>'
-        f'<p style="color:#94a3b8;margin:6px 0 0">Model: {_ckpt_label}</p>'
+        '<div style="padding:14px 0 6px">'
+        '<h1 style="margin:0;font-size:1.5rem;font-weight:700">'
+        'ZOH 2026 · Track #1 — Industrial Process Sequence Modeling</h1>'
+        f'<p style="color:#94a3b8;margin:6px 0 0">{_ckpt_label}</p>'
         '</div>'
     )
 
     with gr.Tabs():
 
-        # ── Tab 1 ──
-        with gr.Tab("Trading Agent"):
-            with gr.Row():
-                symbol_input = gr.Textbox(
-                    label="Ticker Symbol",
-                    placeholder="e.g. AAPL  /  BTC-USD",
-                    scale=5,
-                )
-                analyze_btn = gr.Button("Analyze", variant="primary", scale=1)
-
+        # ── Tab 1: Process Agent ──────────────────────────────────────────────
+        with gr.Tab("Process Agent"):
+            gr.Markdown(
+                "Enter a **partial process sequence** (one step per line). "
+                "Then choose an action below."
+            )
+            seq_input = gr.Textbox(
+                label="Partial Sequence",
+                placeholder="RECEIVE WAFER LOT\nLOT IDENTIFICATION\n...",
+                lines=6,
+            )
             gr.Examples(
                 examples=_QUICK_EXAMPLES,
-                inputs=[symbol_input],
+                inputs=[seq_input],
                 label="Quick examples",
             )
 
-            decision_html = gr.HTML(
-                '<div style="color:#94a3b8;text-align:center;padding:40px">'
-                'Enter a ticker above and click Analyze</div>'
-            )
-            forecast_chart = gr.Plot(label="Forecast")
-
             with gr.Row():
-                reasoning_box = gr.Textbox(
-                    label="Agent Reasoning / Decision", lines=8, scale=3
-                )
-                risk_box = gr.Textbox(label="Risk Metrics", lines=8, scale=2)
+                btn_predict  = gr.Button("Predict Next Step",   variant="primary")
+                btn_complete = gr.Button("Complete Sequence",   variant="secondary")
+                btn_anomaly  = gr.Button("Check Anomaly",       variant="secondary")
 
-            _outs = [decision_html, forecast_chart, reasoning_box, risk_box]
-            analyze_btn.click(fn=analyze_symbol, inputs=[symbol_input], outputs=_outs)
-            symbol_input.submit(fn=analyze_symbol, inputs=[symbol_input], outputs=_outs)
+            result_badge = gr.HTML(
+                '<div style="color:#94a3b8;text-align:center;padding:24px">'
+                'Enter a sequence above and choose an action</div>'
+            )
+            result_chart = gr.Plot(label="")
+            result_text  = gr.Textbox(label="Full Sequence", lines=14, interactive=False)
 
-        # ── Tab 2 ──
+            _outs = [result_badge, result_chart, result_text]
+            btn_predict.click( fn=predict_next,  inputs=[seq_input], outputs=_outs)
+            btn_complete.click(fn=complete_seq,  inputs=[seq_input], outputs=_outs)
+            btn_anomaly.click( fn=check_anomaly, inputs=[seq_input], outputs=_outs)
+
+        # ── Tab 2: Training Monitor ───────────────────────────────────────────
         with gr.Tab("Training Monitor"):
             with gr.Row():
                 refresh_btn = gr.Button("Refresh WandB History", variant="secondary", scale=2)
-                config_dropdown = gr.Dropdown(
+                config_drop = gr.Dropdown(
                     choices=_CONFIGS,
                     value=_CONFIGS[0],
                     label="Config",
@@ -302,12 +279,11 @@ with gr.Blocks(title="ZOH 2026 — Track 03 Trading Agent") as demo:
                 train_btn = gr.Button("Start Training", variant="primary", scale=1)
 
             run_table = gr.Dataframe(
-                headers=["Run Name", "CRPS ↓", "Sharpe ↑", "Steps", "State"],
+                headers=["Run Name", "Top-1 ↑", "Top-3 ↑", "Steps", "State"],
                 label="WandB Run History (last 15 finished runs)",
                 interactive=False,
                 wrap=True,
             )
-
             train_log = gr.Textbox(
                 label="Training Log (live)",
                 lines=22,
@@ -316,7 +292,7 @@ with gr.Blocks(title="ZOH 2026 — Track 03 Trading Agent") as demo:
             )
 
             refresh_btn.click(fn=get_run_history, inputs=[], outputs=[run_table])
-            train_btn.click(fn=launch_training, inputs=[config_dropdown], outputs=[train_log])
+            train_btn.click(fn=launch_training, inputs=[config_drop], outputs=[train_log])
 
 
 if __name__ == "__main__":
