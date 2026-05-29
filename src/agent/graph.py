@@ -17,11 +17,11 @@ def _should_use_llm(state: AgentState) -> str:
     return "llm" if state.get("error") is None else "fallback"
 
 
-def build_graph(llm_client: Any = None) -> StateGraph:
+def build_graph(pipeline: Any = None, llm_client: Any = None) -> StateGraph:
     graph = StateGraph(AgentState)
 
     graph.add_node("fetch_context", fetch_context_node)
-    graph.add_node("forecast", forecast_node)
+    graph.add_node("forecast", partial(forecast_node, pipeline=pipeline))
     graph.add_node("risk", risk_node)
 
     if llm_client:
@@ -38,8 +38,8 @@ def build_graph(llm_client: Any = None) -> StateGraph:
     return graph.compile()
 
 
-def run(symbol: str, current_price: float, llm_client: Any = None) -> AgentState:
-    app = build_graph(llm_client)
+def run(symbol: str, current_price: float, pipeline: Any = None, llm_client: Any = None) -> AgentState:
+    app = build_graph(pipeline=pipeline, llm_client=llm_client)
     initial_state: AgentState = {
         "symbol": symbol,
         "current_price": current_price,

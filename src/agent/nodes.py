@@ -1,4 +1,5 @@
 from typing import Any
+import numpy as np
 from src.agent.state import AgentState
 from src.agent.tools import calculate_risk, decide_action
 
@@ -10,10 +11,28 @@ def fetch_context_node(state: AgentState) -> AgentState:
     return state
 
 
-def forecast_node(state: AgentState) -> AgentState:
-    """Run forecasting model and store predictions."""
-    # replace with bound forecast_tool at runtime
-    state["forecast"] = {}
+def forecast_node(state: AgentState, pipeline: Any = None) -> AgentState:
+    """Run Chronos pipeline and store median/q10/q90 forecast in state."""
+    if pipeline is None:
+        state["forecast"] = {}
+        return state
+
+    prices = state["market_context"].get("prices", [])
+    if not prices:
+        state["forecast"] = {}
+        return state
+
+    import torch
+    ctx = torch.tensor(prices[-512:], dtype=torch.float32)
+    pred_len = state["market_context"].get("pred_len", 30)
+    samples = pipeline.predict(ctx, pred_len, num_samples=20)
+    draws = samples[0].numpy()  # (n_samples, pred_len)
+
+    state["forecast"] = {
+        "median": np.median(draws, axis=0).tolist(),
+        "q10": np.quantile(draws, 0.1, axis=0).tolist(),
+        "q90": np.quantile(draws, 0.9, axis=0).tolist(),
+    }
     return state
 
 
