@@ -26,6 +26,8 @@ def run_backtest(
     """Walk-forward backtest. `decision_fn(symbol, price) -> {"action": BUY|SELL|HOLD}`."""
     capital = initial_capital
     position = 0.0
+    entry_price: float | None = None
+    completed_trades: list[bool] = []   # True = exit_price > entry_price
     returns = []
     decisions = []
 
@@ -39,9 +41,13 @@ def run_backtest(
             shares = capital / (price * (1 + transaction_cost))
             position += shares
             capital = 0.0
+            entry_price = price
         elif action == "SELL" and position > 0:
             capital = position * price * (1 - transaction_cost)
             position = 0.0
+            if entry_price is not None:
+                completed_trades.append(price > entry_price)
+            entry_price = None
 
         portfolio_value = capital + position * price
         returns.append(portfolio_value)
@@ -52,8 +58,7 @@ def run_backtest(
     sharpe = float(np.mean(pct_returns) / (np.std(pct_returns) + 1e-9) * np.sqrt(252))
     total_return = float((returns_arr[-1] - initial_capital) / initial_capital)
     drawdown = float(np.max(np.maximum.accumulate(returns_arr) - returns_arr) / np.maximum.accumulate(returns_arr).max())
-    wins = sum(1 for d in decisions if d["action"] == "BUY")
-    win_rate = wins / max(len(decisions), 1)
+    win_rate = (sum(completed_trades) / len(completed_trades)) if completed_trades else 0.0
 
     return BacktestResult(
         symbol=symbol,

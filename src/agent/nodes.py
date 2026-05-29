@@ -5,9 +5,38 @@ from src.agent.tools import calculate_risk, decide_action
 
 
 def fetch_context_node(state: AgentState) -> AgentState:
-    """Pull recent price data and attach to state."""
-    # replace with bound get_market_context at runtime
-    state["market_context"] = {}
+    """Fetch recent price history for the symbol using yfinance."""
+    import yfinance as yf
+
+    symbol = state.get("symbol", "")
+    if not symbol:
+        state["market_context"] = {}
+        state["error"] = "no symbol provided"
+        return state
+
+    try:
+        df = yf.download(symbol, period="3y", interval="1d",
+                         auto_adjust=True, progress=False)
+        if df.empty:
+            state["market_context"] = {}
+            state["error"] = f"yfinance returned no data for {symbol}"
+            return state
+
+        close = df["Close"]
+        if hasattr(close, "squeeze"):
+            close = close.squeeze()
+        prices = close.dropna().tolist()
+
+        state["market_context"] = {
+            "prices":    prices,
+            "pred_len":  30,
+            "symbol":    symbol,
+            "last_date": str(df.index[-1].date()),
+        }
+    except Exception as exc:
+        state["market_context"] = {}
+        state["error"] = f"fetch_context failed: {exc}"
+
     return state
 
 
