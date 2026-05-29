@@ -44,14 +44,15 @@ def load_model(
     device: str | torch.device = "cpu",
 ) -> GPT2LMHeadModel:
     """Load a previously saved model checkpoint."""
-    import os
     from pathlib import Path
     path = Path(ckpt_dir) / "model.pt"
-    state = torch.load(path, map_location=device)
-    # infer arch from state dict
-    n_embd  = state["transformer.wte.weight"].shape[1]
+    state = torch.load(path, map_location=device, weights_only=True)
+    # infer arch from state dict shapes
+    n_positions, n_embd = state["transformer.wpe.weight"].shape
     n_layer = max(int(k.split(".")[2]) for k in state if k.startswith("transformer.h.")) + 1
-    model = build_model(tokenizer, n_embd=n_embd, n_layer=n_layer)
+    n_head  = state["transformer.h.0.attn.c_attn.weight"].shape[1] // (3 * n_embd // n_embd)
+    # c_attn projects to 3*n_embd; heads = n_embd // head_dim, head_dim inferred from config default
+    model = build_model(tokenizer, max_seq_len=n_positions, n_embd=n_embd, n_layer=n_layer)
     model.load_state_dict(state)
     return model.to(device)
 
@@ -67,11 +68,11 @@ def predict_next_step(
 ) -> list[tuple[str, float]]:
     """Return top-k (step_name, probability) for the next step."""
     model.eval()
-    input_ids = torch.tensor(
-        [tokenizer.encode(partial_steps)], dtype=torch.long, device=device
-    )
+    ids = tokenizer.encode(partial_steps)
+    input_ids = torch.tensor([ids], dtype=torch.long, device=device)
+    attn_mask = torch.ones_like(input_ids)
     with torch.no_grad():
-        logits = model(input_ids).logits[0, -1]  # last-position logits
+        logits = model(input_ids, attention_mask=attn_mask).logits[0, -1]
     probs = torch.softmax(logits, dim=-1)
     # take top_k * 3 to have room to filter special tokens
     topk = torch.topk(probs, k=min(top_k * 3, tokenizer.vocab_size))
@@ -94,16 +95,17 @@ def complete_sequence(
 ) -> list[str]:
     """Autoregressively generate the rest of the sequence."""
     model.eval()
-    input_ids = torch.tensor(
-        [tokenizer.encode(partial_steps)], dtype=torch.long, device=device
-    )
+    ids = tokenizer.encode(partial_steps)
+    input_ids = torch.tensor([ids], dtype=torch.long, device=device)
+    attn_mask = torch.ones_like(input_ids)
     with torch.no_grad():
         out = model.generate(
             input_ids,
+            attention_mask=attn_mask,
             max_new_tokens=max_new_steps,
             eos_token_id=tokenizer.eos_id,
             pad_token_id=tokenizer.pad_id,
-            do_sample=False,  # greedy — deterministic for eval
+            do_sample=False,
         )
     generated_ids = out[0, input_ids.shape[1]:].tolist()
     return tokenizer.decode(generated_ids)
@@ -119,6 +121,7 @@ def anomaly_score(
     model.eval()
     ids = tokenizer.encode(steps)
     input_ids = torch.tensor([ids], dtype=torch.long, device=device)
+    attn_mask = torch.ones_like(input_ids)
     with torch.no_grad():
-        loss = model(input_ids, labels=input_ids).loss
+        loss = model(input_ids, attention_mask=attn_mask, labels=input_ids).loss
     return math.exp(min(loss.item(), 20.0))  # clip to avoid overflow

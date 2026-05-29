@@ -38,10 +38,14 @@ class ProcessSequenceDataset(Dataset):
     def __len__(self) -> int:
         return len(self.encoded)
 
-    def __getitem__(self, idx: int) -> torch.Tensor:
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
         seq = self.encoded[idx][: self.max_len]
-        seq = seq + [self.pad_id] * (self.max_len - len(seq))
-        return torch.tensor(seq, dtype=torch.long)
+        real_len = len(seq)
+        seq = seq + [self.pad_id] * (self.max_len - real_len)
+        input_ids   = torch.tensor(seq, dtype=torch.long)
+        attn_mask   = torch.zeros(self.max_len, dtype=torch.long)
+        attn_mask[:real_len] = 1
+        return input_ids, attn_mask
 
 
 def _load_dataset(cfg: dict) -> tuple[list[list[str]], list[list[str]]]:
@@ -182,13 +186,17 @@ def main(config_path: str) -> None:
     model.train()
     while step < max_steps:
         try:
-            batch = next(data_iter)
+            batch_ids, batch_mask = next(data_iter)
         except StopIteration:
             data_iter = iter(train_loader)
-            batch     = next(data_iter)
+            batch_ids, batch_mask = next(data_iter)
 
-        batch = batch.to(device)
-        loss  = model(batch, labels=batch).loss
+        batch_ids  = batch_ids.to(device)
+        batch_mask = batch_mask.to(device)
+        # labels: -100 on PAD positions so they are ignored in loss
+        labels = batch_ids.clone()
+        labels[batch_mask == 0] = -100
+        loss = model(batch_ids, attention_mask=batch_mask, labels=labels).loss
 
         optimizer.zero_grad()
         loss.backward()
