@@ -1,7 +1,8 @@
-# ZOH 2026 — Track 03: Trading Decision Agent
+# ZOH 2026 — Track #3 Forecasting: Trading Decision Agent
 
 **Competition**: Zero One Hack · Vienna · May 29–31, 2026 · 36 hours · 64× NVIDIA A100  
-**Track**: 03 — Sybilion · *An agent that decides when to buy*  
+**Track**: #3 — Forecasting (Sybilion) · *An agent that decides when to buy*  
+**Technical focus**: Agent design, multi-step decisions, and stress-tested evaluation at scale.  
 **Goal**: Real trained model + live Gradio demo. A slide deck without a running model will not clear judging.
 
 ---

@@ -6,9 +6,14 @@
 ## Project Context
 
 **Competition:** Zero One Hack · Vienna (May 29–31, 2026) — 36-hour hackathon, 64× NVIDIA A100s.
-**Track:** 03 — Sybilion · *An agent that decides when to buy.*
+**Track:** #3 — Forecasting (Sybilion) · *An agent that decides when to buy.*
+**Technical focus:** Agent design, multi-step decisions, and stress-tested evaluation at scale.
 **Goal:** Real trained model + live Gradio demo. A slide deck without a running model will not clear judging.
 **Portfolio target:** AI Engineer job applications (full-stack: idea → trained model → deployed demo).
+
+**Other tracks (for context):**
+- #1 Industrial (Infineon) — sequence models (LLMs, transformers, hybrids) for process modeling
+- #2 Insurance (Uniqa) — prompt orchestration + conversational UI for customer guidance
 
 **Team:**
 - Lea — data pipeline, AI agents, cloud, DevOps
