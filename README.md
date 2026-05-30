@@ -45,19 +45,50 @@ See `docs/architecture.html` for the full interactive diagram.
 
 ---
 
-## Key Commands
+## Running the Baseline
+
+### 1. Smoke test — verify the pipeline locally (no WandB, ~1 min)
 
 ```bash
-# Environment check
-uv run python scripts/verify_setup.py
-
-# Smoke-test training (200 steps, no WandB)
 WANDB_MODE=disabled uv run python src/train.py configs/exp/gpt2_dummy.yaml
+```
 
-# Full training on competition data
+Uses a synthetic dummy dataset (300 sequences, 20 vocab). Eval runs every 50 steps.  
+Expected terminal output:
+
+```
+[train] 270 train / 30 val sequences
+[train] vocab size: 20
+[train] parameters: 804,884
+[eval] step=50   top1=0.xxxx  top3=0.xxxx  mrr=0.xxxx
+[eval] step=100  top1=0.xxxx  top3=0.xxxx  mrr=0.xxxx
+...
+[done] best_top1=0.xxxx
+```
+
+### 2. Baseline training on competition data (logs to WandB)
+
+```bash
 uv run python src/train.py configs/exp/gpt2_finetune_v1.yaml
+```
 
-# Full evaluation (all 3 tasks)
+Trains on `data/raw/training_data/` (IC / IGBT / MOSFET CSVs). Eval runs every 300 steps.  
+Metrics printed to terminal **and** logged to [wandb.ai](https://wandb.ai) project `zoh2026`:
+
+| Metric | Logged key | When |
+|--------|------------|------|
+| Training loss | `train/loss` | every 10 steps |
+| Learning rate | `train/lr` | every 10 steps |
+| Top-1 Accuracy | `eval/top1` | every 300 steps |
+| Top-3 Accuracy | `eval/top3` | every 300 steps |
+| Top-5 Accuracy | `eval/top5` | every 300 steps |
+| MRR | `eval/mrr` | every 300 steps |
+
+Best checkpoint (by Top-1) is saved to `data/oof/<run_name>/model.pt`.
+
+### 3. Full evaluation (after organiser eval CSVs arrive)
+
+```bash
 uv run python -c "
 from src.evaluator import run_full_eval
 from src.utils.wandb_utils import load_best_model
@@ -65,8 +96,11 @@ model, tok, _, _ = load_best_model()
 results = run_full_eval(model, tok, 'data/raw/eval_input_valid.csv', 'data/raw/eval_input_anomaly.csv')
 import json; print(json.dumps(results, indent=2))
 "
+```
 
-# Launch demo
+### 4. Launch Gradio demo
+
+```bash
 uv run python app/demo.py
 ```
 
