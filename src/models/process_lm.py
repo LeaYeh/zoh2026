@@ -6,6 +6,7 @@ the provided process CSV data.
 """
 from __future__ import annotations
 import math
+from pathlib import Path
 
 import torch
 import torch.nn as nn
@@ -20,8 +21,14 @@ def build_model(
     n_embd: int = 256,
     n_layer: int = 6,
     n_head: int = 8,
+    embedding_init: str | None = None,
+    desc_path: str | Path | None = None,
 ) -> GPT2LMHeadModel:
-    """Build a small GPT-2 from scratch with the process-step vocabulary."""
+    """Build a small GPT-2 from scratch with the process-step vocabulary.
+
+    embedding_init='description' initializes wte from step descriptions (ADR-014).
+    Special tokens keep their random init regardless of embedding_init.
+    """
     config = GPT2Config(
         vocab_size=tokenizer.vocab_size,
         n_positions=max_seq_len,
@@ -35,7 +42,24 @@ def build_model(
         eos_token_id=tokenizer.eos_id,
         pad_token_id=tokenizer.pad_id,
     )
-    return GPT2LMHeadModel(config)
+    model = GPT2LMHeadModel(config)
+
+    if embedding_init == "description" and desc_path is not None:
+        from src.models.desc_embed import build_description_feature_matrix
+        feat = build_description_feature_matrix(
+            step_names=tokenizer.id_to_step,
+            desc_path=Path(desc_path),
+            n_embd=n_embd,
+        )
+        # Replace process-step rows; keep random init for special tokens
+        special_ids = {tokenizer.step_to_id[t] for t in SPECIAL_TOKENS if t in tokenizer.step_to_id}
+        with torch.no_grad():
+            for i, vec in enumerate(feat):
+                if i not in special_ids and vec.norm() > 0:
+                    model.transformer.wte.weight[i] = vec
+        print(f"[model] embedding_init=description  desc_path={desc_path}")
+
+    return model
 
 
 def load_model(
