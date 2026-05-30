@@ -10,6 +10,10 @@ model:
 dataset:
   name: process_csv
   train_path: data/raw/training_data/
+  train_files:
+    - ic_10k.csv
+    - igbt_10k.csv
+    - mosfet_10k.csv
   product_families: [IC, IGBT, MOSFET]
   sequence_col: SEQUENCE_ID
   step_col: STEP

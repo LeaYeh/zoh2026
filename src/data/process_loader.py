@@ -77,6 +77,7 @@ class ProcessStepTokenizer:
 def load_sequences(
     data_dir: str | Path,
     product_families: list[str] | None = None,
+    train_files: list[str] | None = None,
     sequence_col: str = "SEQUENCE_ID",
     step_col: str = "STEP",
     min_length: int = 5,
@@ -84,11 +85,14 @@ def load_sequences(
     """Load process sequences from CSV files in data_dir.
 
     Expects long-format CSVs: one row per step with sequence_col and step_col.
-    If product_families is given, globs for files containing each family name.
+    If train_files is given, loads exactly those filenames (no globbing).
+    Otherwise, if product_families is given, globs for files containing each family name.
     """
     data_dir = Path(data_dir)
     csv_files: list[Path] = []
-    if product_families:
+    if train_files:
+        csv_files = [data_dir / f for f in train_files]
+    elif product_families:
         for family in product_families:
             for pattern in (f"*{family}*.csv", f"*{family.lower()}*.csv"):
                 csv_files.extend(data_dir.glob(pattern))

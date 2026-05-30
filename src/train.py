@@ -55,6 +55,7 @@ def _load_dataset(cfg: dict) -> tuple[list[list[str]], list[list[str]]]:
         seqs = load_sequences(
             data_dir=cfg["train_path"],
             product_families=cfg.get("product_families"),
+            train_files=cfg.get("train_files"),
             sequence_col=cfg.get("sequence_col", "SEQUENCE_ID"),
             step_col=cfg.get("step_col", "STEP"),
             min_length=cfg.get("min_length", 5),

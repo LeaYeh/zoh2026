@@ -1,13 +1,18 @@
 # ADR 012 — Track 1: Consolidated EDA Findings and Architecture Baseline
 
 **Status:** Accepted  
-**Date:** 2026-05-30
+**Date:** 2026-05-30  
+**Updated:** 2026-05-30 (re-run on 10k dataset)
 
 ## Context
 
 After completing EDA (`notebooks/eda/track1_eda.ipynb`) and establishing the statistical
 baseline (ADR-008, ADR-009, ADR-010, ADR-011), a consolidated reference is needed that
 captures all findings and their direct implications for GPT-2 fine-tuning on Leonardo.
+
+EDA was originally run on 1k sequences per family (`*_variants.csv`). All statistics below
+have been recomputed on the full 10k dataset (`ic_10k.csv`, `igbt_10k.csv`, `mosfet_10k.csv`).
+The 1k estimates are noted where they differ.
 
 This ADR supersedes none of the prior ADRs — it is a synthesis record for competition-day
 reference.
@@ -16,21 +21,21 @@ reference.
 
 ## Corpus Statistics
 
-| Metric | Value |
-|---|---|
-| Total sequences | 3,000 (1,000 per family) |
-| Total step tokens | 388,294 |
-| Full vocabulary | **198 unique step names** |
-| Shared (all 3 families) | **94 steps (47%)** |
-| Family-exclusive | 76 steps (MOSFET 20 / IGBT 27 / IC 29) |
+| Metric | 1k (original) | **10k (current)** |
+|---|---|---|
+| Total sequences | 3,000 | **30,000** |
+| Total step tokens | 388,294 | **3,884,749** |
+| Full vocabulary | 198 unique step names | **198 (confirmed stable)** |
+| Shared (all 3 families) | 94 steps (47%) | **94 steps (47%)** |
+| Family-exclusive steps | 76 (MOSFET 20 / IGBT 27 / IC 29) | **76 (unchanged)** |
 
-**Sequence lengths:**
+**Sequence lengths (10k):**
 
-| Family | Min | Max | Mean |
-|---|---|---|---|
-| IC | 107 | 122 | 115 |
-| MOSFET | 117 | 134 | 125 |
-| IGBT | 139 | 155 | 148 |
+| Family | Min | p25 | p50 | p75 | Max | Mean |
+|---|---|---|---|---|---|---|
+| IC | 104 | 114 | 115 | 117 | 124 | 115.2 |
+| MOSFET | 117 | 124 | 125 | 127 | 134 | 125.3 |
+| IGBT | 138 | 146 | 148 | 150 | 158 | 148.0 |
 
 GPT-2 default context window (1024 tokens) covers the longest possible sequence (~160 tokens)
 with 6× headroom. No sliding window or truncation is needed.
@@ -39,14 +44,22 @@ with 6× headroom. No sliding window or truncation is needed.
 
 ## Process Grammar
 
-**Conditional entropy H(next | current) = 0.89–0.95 bits per family.**
+**Conditional entropy H(next | current) — 10k estimates (1k in parentheses):**
 
-- 38–48% of steps have exactly one valid successor (entropy = 0 bits).
-- Every sequence starts with `RECEIVE WAFER LOT` (100% frequency, all families).
-- High-entropy steps are optional measurements and litho-cycle branch points only.
+| Family | H (10k) | H (1k) | Deterministic steps |
+|---|---|---|---|
+| IC | 0.8709 bits | (0.89) | 48 / 131 (37%) |
+| IGBT | 0.9387 bits | (0.95) | 58 / 148 (39%) |
+| MOSFET | 0.7641 bits | (0.78) | 59 / 138 (43%) |
+| Combined | **1.0952 bits** | (1.11) | — |
 
-Implication: the grammar is learnable from 1,000 sequences; the model must capture
-*optional-step variation*, not discover a hidden grammar from noise.
+- Entropy estimates converged: 10k values are ≤0.02 bits from 1k estimates. The 1k corpus was statistically sufficient for entropy estimation.
+- Every sequence starts with `RECEIVE WAFER LOT` (100% frequency, all families, confirmed on 10k).
+- **Optional steps are dominant**: IC 73, IGBT 70, MOSFET 68 steps appear in <100% of sequences. Over 50% of each family's vocabulary is optional — this is the primary source of Task 2 difficulty (bigram greedy completion hits optional branch points and cascades into error).
+- High-entropy steps cluster around: litho branch points, via etch variants, measurement steps.
+
+Implication: with 10k sequences, the grammar is fully characterized. The model must capture
+*optional-step variation* across 68–73 per-family optional steps, not discover structure from noise.
 
 ---
 
@@ -74,6 +87,19 @@ RECEIVE WAFER LOT → LOT IDENTIFICATION → ... → HF DIP
 IGBT's 6 litho levels vs MOSFET/IC's 4 is the clearest case where the `[FAMILY]` BOS
 conditioning token is mandatory — without it, the model cannot know that `ALIGN MASK LEVEL 5`
 and `ALIGN MASK LEVEL 6` are legal next steps.
+
+**Family-exclusive bigram transitions (10k vs 1k):**
+
+| Family | Exclusive bigrams (10k) | Total bigrams | % exclusive | 1k estimate |
+|---|---|---|---|---|
+| IC | 89 | 280 | **31.8%** | (40–46%) |
+| IGBT | 81 | 298 | **27.2%** | (40–46%) |
+| MOSFET | 56 | 264 | **21.2%** | (40–46%) |
+
+The 1k estimate (40–46%) overstated family exclusivity due to sparse sampling. With 10k
+sequences, previously unseen transitions appear in multiple families, reducing exclusive %.
+However, the combined H (1.0952) remains higher than any per-family H (0.76–0.94), confirming
+that family conditioning still reduces prediction entropy and is worth retaining.
 
 ---
 
