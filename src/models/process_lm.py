@@ -150,7 +150,7 @@ def predict_next_step(
 ) -> list[tuple[str, float]]:
     """Return top-k (step_name, probability) for the next step."""
     model.eval()
-    ids = tokenizer.encode(partial_steps)
+    ids = tokenizer.encode(partial_steps)[:-1]  # BOS + steps, no EOS — logits[-1] predicts next step
     input_ids = torch.tensor([ids], dtype=torch.long, device=device)
     attn_mask = torch.ones_like(input_ids)
     with torch.no_grad():
@@ -177,7 +177,7 @@ def complete_sequence(
 ) -> list[str]:
     """Autoregressively generate the rest of the sequence."""
     model.eval()
-    ids = tokenizer.encode(partial_steps)
+    ids = tokenizer.encode(partial_steps)[:-1]  # BOS + steps, no EOS — generate from last real step
     input_ids = torch.tensor([ids], dtype=torch.long, device=device)
     attn_mask = torch.ones_like(input_ids)
     with torch.no_grad():
