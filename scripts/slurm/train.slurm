@@ -1,15 +1,13 @@
 #!/bin/bash
-#SBATCH --job-name=zoh-gpt2
 #SBATCH --partition=boost_usr_prod
-#SBATCH --account=PLACEHOLDER_ACCOUNT   # <-- fill in competition account code
-#SBATCH --nodes=1
-#SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=8
-#SBATCH --gres=gpu:1
-#SBATCH --mem=64G
-#SBATCH --time=02:00:00
-#SBATCH --output=%x_%j.out
-#SBATCH --error=%x_%j.err
+#SBATCH --reservation=s_tra_ncc # Reservation for the hackathon
+#SBATCH --nodes=1 # Number of nodes
+#SBATCH --ntasks-per-node=1 # Number of `srun` tasks executed per node
+#SBATCH --gpus-per-task=1 # Number of GPUs (up to 4 on Leonardo)
+#SBATCH --mem=120GB # Fair share on Leonardo: 120GB * gpus-per-task
+#SBATCH --cpus-per-task=8 # Fair share on Leonardo: 8 * gpus-per-task
+#SBATCH --time=0:30:00 # Time limit in HH:MM:SS, up to 24:00:00
+#SBATCH --account=EUHPC_D30_031
 
 # Usage:
 #   sbatch scripts/slurm/train.slurm
@@ -42,7 +40,7 @@ export PATH="$HOME/.cargo/bin:$PATH"   # uv lives here
 echo "==> WANDB_MODE=$WANDB_MODE  WANDB_DIR=$WANDB_DIR"
 
 # ── training ─────────────────────────────────────────────────────────────────
-uv run python src/train.py "$CONFIG"
+pixi run python src/train.py "$CONFIG"
 
 echo "==> Training done. Sync WandB from login node:"
 echo "    wandb sync $WORK_DIR/wandb/offline-run-*/"
