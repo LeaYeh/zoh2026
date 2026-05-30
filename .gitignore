@@ -4,8 +4,9 @@
 *.bin
 *.safetensors
 
-# Data (never commit raw or processed data)
-data/raw/
+# Data — ignore generated/downloaded artefacts, keep competition training data
+data/raw/gresearch/
+data/raw/*.parquet
 data/processed/
 data/oof/
 data/folds.pkl
