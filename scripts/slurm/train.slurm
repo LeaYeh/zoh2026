@@ -16,14 +16,16 @@
 set -euo pipefail
 
 CONFIG="${1:-configs/exp/gpt2_finetune_v1.yaml}"
-REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+REPO_ROOT=.
 WORK_DIR="${WORK:-$HOME}/zoh2026"
 
 echo "==> Job: $SLURM_JOB_ID | Node: $SLURMD_NODENAME | GPU: $CUDA_VISIBLE_DEVICES"
 echo "==> Config: $CONFIG"
-echo "==> Repo:   $REPO_ROOT"
+echo -e "==> Repo:   "
+pwd
 
-cd "$REPO_ROOT"
+#cd "$REPO_ROOT"
+#cd ../..
 
 # ── env ──────────────────────────────────────────────────────────────────────
 # Load .env for WANDB_PROJECT / WANDB_ENTITY / WANDB_API_KEY
