@@ -12,9 +12,12 @@ Tasks evaluated:
 from __future__ import annotations
 
 import argparse
+import os
 import random
 import sys
 from pathlib import Path
+
+import wandb
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -168,9 +171,25 @@ def main() -> None:
     parser.add_argument("--data-dir", default="data/raw/training_data")
     parser.add_argument("--val-ratio", type=float, default=0.1)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--wandb-project", default=os.getenv("WANDB_PROJECT", "zoh2026"))
+    parser.add_argument("--run-name", default="bigram-baseline")
     args = parser.parse_args()
 
     data_dir = Path(args.data_dir)
+
+    wandb.init(
+        project=args.wandb_project,
+        name=args.run_name,
+        config={
+            "model": "bigram",
+            "families": FAMILIES,
+            "val_ratio": args.val_ratio,
+            "seed": args.seed,
+            "data_dir": str(data_dir),
+        },
+        tags=["track1", "bigram", "baseline"],
+    )
+
     print(f"\n{'='*60}")
     print(f"Bigram Baseline Evaluation")
     print(f"Data dir : {data_dir}")
@@ -197,6 +216,13 @@ def main() -> None:
         print(f"  {fam:6s} median length: {med:.0f}")
     print()
 
+    wandb.config.update({
+        "model/total_bigrams": total_bigrams,
+        "model/family_medians": dict(model._family_medians),
+        "data/train_size": len(train_seqs),
+        "data/val_size": len(val_seqs),
+    }, allow_val_change=True)
+
     # ── Task 1 ────────────────────────────────────────────────────────────────
     print("── Task 1: Next-Step Prediction ─────────────────────────────")
     t1 = eval_task1(model, val_seqs, val_fams)
@@ -206,15 +232,27 @@ def main() -> None:
     print(f"  Top-5   : {t1['top5']:.4f}  ({t1['top5']*100:.1f}%)")
     print(f"  MRR     : {t1['mrr']:.4f}")
     print()
+    wandb.log({
+        "task1/top1": t1["top1"],
+        "task1/top3": t1["top3"],
+        "task1/top5": t1["top5"],
+        "task1/mrr": t1["mrr"],
+        "task1/n_samples": t1["n_samples"],
+    })
 
     # ── Task 2 ────────────────────────────────────────────────────────────────
     print("── Task 2: Sequence Completion ──────────────────────────────")
     t2 = eval_task2(model, val_seqs, val_fams)
+    t2_log = {}
     for key, res in t2.items():
         print(f"  [{key}]  n={res['n_samples']}")
         print(f"    Exact Match     : {res['exact_match_rate']:.4f}")
         print(f"    Norm Edit Dist  : {res['normalized_edit_distance']:.4f}  (lower=better)")
         print(f"    Token Accuracy  : {res['token_accuracy']:.4f}")
+        t2_log[f"task2/{key}/exact_match"] = res["exact_match_rate"]
+        t2_log[f"task2/{key}/ned"] = res["normalized_edit_distance"]
+        t2_log[f"task2/{key}/token_accuracy"] = res["token_accuracy"]
+    wandb.log(t2_log)
     print()
 
     # ── Task 3 ────────────────────────────────────────────────────────────────
@@ -229,6 +267,23 @@ def main() -> None:
     print()
     print("NOTE: Task 3 uses step-swap synthetic anomalies.")
     print("      Real eval requires organizer-provided eval_input_anomaly.csv.")
+    wandb.log({
+        "task3/binary_accuracy": t3["binary_accuracy"],
+        "task3/f1": t3["f1"],
+        "task3/roc_auc": t3["roc_auc"],
+        "task3/threshold": t3["threshold"],
+        "task3/oov_flagged": t3["oov_flagged"],
+    })
+
+    wandb.summary.update({
+        "task1/top1": t1["top1"],
+        "task1/mrr": t1["mrr"],
+        "task2/token_accuracy_60pct": t2["completion_60pct"]["token_accuracy"],
+        "task2/token_accuracy_80pct": t2["completion_80pct"]["token_accuracy"],
+        "task3/roc_auc": t3["roc_auc"],
+    })
+
+    wandb.finish()
 
 
 if __name__ == "__main__":
