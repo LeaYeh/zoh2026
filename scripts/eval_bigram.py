@@ -18,6 +18,9 @@ import sys
 from pathlib import Path
 
 import wandb
+from dotenv import load_dotenv
+
+load_dotenv()
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -172,6 +175,7 @@ def main() -> None:
     parser.add_argument("--val-ratio", type=float, default=0.1)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--wandb-project", default=os.getenv("WANDB_PROJECT", "zoh2026"))
+    parser.add_argument("--wandb-entity", default=os.getenv("WANDB_ENTITY"))
     parser.add_argument("--run-name", default="bigram-baseline")
     args = parser.parse_args()
 
@@ -179,6 +183,7 @@ def main() -> None:
 
     wandb.init(
         project=args.wandb_project,
+        entity=args.wandb_entity,
         name=args.run_name,
         config={
             "model": "bigram",
