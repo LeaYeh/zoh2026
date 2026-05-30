@@ -149,9 +149,13 @@ def main(config_path: str) -> None:
     train_loader = DataLoader(train_ds, batch_size=batch_size, shuffle=True, drop_last=True)
 
     # ── model ────────────────────────────────────────────────────────────────
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if torch.cuda.is_available():
-        torch.set_float32_matmul_precision("high")
+        device = torch.device("cuda")
+        torch.set_float32_matmul_precision("high")  # TF32 on A100
+    elif torch.backends.mps.is_available():
+        device = torch.device("mps")
+    else:
+        device = torch.device("cpu")
     print(f"[train] device: {device}")
 
     model = build_model(
