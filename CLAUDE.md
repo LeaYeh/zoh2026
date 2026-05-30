@@ -24,13 +24,14 @@
 **On-site mentor:** Simeon (Infineon)
 
 **Competition state:**
-- **Data**: `data/raw/training_data/` — IC / IGBT / MOSFET variant CSVs (1K seqs each)
+- **Data**: `data/raw/training_data/` — IC / IGBT / MOSFET 10k CSVs (`ic_10k.csv`, `igbt_10k.csv`, `mosfet_10k.csv`)
 - **Eval metric**: Top-1 Accuracy (Task 1 primary); F1 (Task 3)
-- **Current phase**: Phase 1 — Baseline training
-- **Best Top-1**: [fill after first run]
-- **Gates completed**: [0 / 4]
-- **Next milestone**: Gate 1 — GPT-2 baseline Top-1 ≥ 0.40
+- **Current phase**: Phase 2 — Leonardo ablation (A/B/C)
+- **Best Top-1**: 0.810 (`gpt2_mac_local`, 6L/256d, 10k seqs, step 200, MPS)
+- **Gates completed**: [2 / 4] — Gate 1 ✅ Gate 2 ✅
+- **Next milestone**: Gate 3 — all 3 submission files valid (waiting for eval CSVs from organizers)
 - **Known issues**: eval_input_valid.csv and eval_input_anomaly.csv not yet distributed by organizers
+- **Critical fix (2026-05-30)**: EOS inference bug fixed in `predict_next_step` and `complete_sequence` — was passing `[BOS…EOS]`, now passes `[BOS…steps]` only
 
 ---
 
@@ -144,19 +145,18 @@ Rule violations in submission = zero score for that example.
 ## Review Gates (human must approve before proceeding)
 
 ```
-Gate 1: Is the baseline pipeline working end-to-end?
-  → Human confirms: GPT-2 trains, eval/top1 > 0 after 200 steps, demo loads
-  → Fail → fix pipeline, do not proceed
+Gate 1: Is the baseline pipeline working end-to-end?          ✅ PASSED (2026-05-30)
+  → Result: gpt2_mac_local Top-1=0.810 at step 200 on MPS
 
-Gate 2: Is Top-1 ≥ 0.40 on val set?
-  → Human confirms: gpt2_finetune_v1 reaches Top-1 ≥ 0.40 by step 1000
-  → Fail → lower LR, generate more data, or try larger model
+Gate 2: Is Top-1 ≥ 0.40 on val set?                          ✅ PASSED (2026-05-30)
+  → Result: Top-1=0.810 >> 0.40; Top-3=1.000; converged at step 200
 
-Gate 3: Are all 3 submission tasks producing valid outputs?
+Gate 3: Are all 3 submission tasks producing valid outputs?    ⏳ PENDING
+  → Blocked: eval_input_valid.csv and eval_input_anomaly.csv not yet distributed
   → Human confirms: nextstep.csv / completion.csv / anomaly.csv generated and format-correct
   → Fail → fix scripts/submit.py, re-run
 
-Gate 4: Is the final demo ready?
+Gate 4: Is the final demo ready?                               ⏳ PENDING
   → Human confirms: Gradio demo runs, all 3 actions work, submission files validated
   → Pass → enter buffer time, no new experiments
 ```
