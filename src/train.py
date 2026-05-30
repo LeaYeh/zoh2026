@@ -134,10 +134,27 @@ def main(config_path: str) -> None:
     torch.manual_seed(seed)
     np.random.seed(seed)
 
+    # Build a descriptive suffix so WandB run names are self-explaining:
+    #   <base>|fam|desc|cat  (each tag omitted when feature is off)
+    # Examples:
+    #   gpt2_mac_local            → no family token, random init, no cat embed
+    #   leonardo_A|fam            → family token only
+    #   leonardo_B|fam|desc       → family token + description init
+    #   leonardo_C|fam|desc|cat   → all three
+    _tags: list[str] = []
+    if ds_cfg.get("family_prefix", False):
+        _tags.append("fam")
+    _init = model_cfg.get("embedding_init") or "rand"
+    if _init != "rand":
+        _tags.append(_init[:4])   # "desc"
+    if model_cfg.get("category_embed", False):
+        _tags.append("cat")
+    display_name = run_name + ("|" + "|".join(_tags) if _tags else "")
+
     wandb_cfg = cfg.get("wandb", {})
     wandb.init(
         project=os.getenv("WANDB_PROJECT", "zoh2026"),
-        name=run_name,
+        name=display_name,
         group=wandb_cfg.get("group"),
         notes=wandb_cfg.get("notes"),
         config=cfg,
@@ -145,7 +162,7 @@ def main(config_path: str) -> None:
     )
     # flat variant keys — visible as columns in WandB comparison table
     wandb.config.update({
-        "variant/embedding_init": model_cfg.get("embedding_init") or "random",
+        "variant/embedding_init": _init,
         "variant/category_embed": model_cfg.get("category_embed", False),
         "variant/family_prefix":  ds_cfg.get("family_prefix", False),
         "variant/has_desc_path":  bool(model_cfg.get("desc_path")),
