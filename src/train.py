@@ -162,6 +162,7 @@ def main(config_path: str) -> None:
         n_head=model_cfg.get("n_head", 8),
         embedding_init=model_cfg.get("embedding_init"),
         desc_path=model_cfg.get("desc_path"),
+        category_embed=model_cfg.get("category_embed", False),
     ).to(device)
 
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
