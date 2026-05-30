@@ -81,6 +81,15 @@ def _load_dataset(cfg: dict) -> tuple[list[list[str]], list[list[str]]]:
 
 # ── eval ──────────────────────────────────────────────────────────────────────
 
+def _split_by_family(seqs: list[list[str]]) -> dict[str, list[list[str]]]:
+    families: dict[str, list[list[str]]] = {}
+    for seq in seqs:
+        if seq and seq[0].startswith("[") and seq[0].endswith("]"):
+            fam = seq[0][1:-1].lower()
+            families.setdefault(fam, []).append(seq)
+    return families
+
+
 def _eval_step(
     model: torch.nn.Module,
     tokenizer: ProcessStepTokenizer,
@@ -134,6 +143,13 @@ def main(config_path: str) -> None:
         config=cfg,
         tags=["track1", model_cfg.get("type", "gpt2_scratch")] + wandb_cfg.get("tags", []),
     )
+    # flat variant keys — visible as columns in WandB comparison table
+    wandb.config.update({
+        "variant/embedding_init": model_cfg.get("embedding_init") or "random",
+        "variant/category_embed": model_cfg.get("category_embed", False),
+        "variant/family_prefix":  ds_cfg.get("family_prefix", False),
+        "variant/has_desc_path":  bool(model_cfg.get("desc_path")),
+    }, allow_val_change=True)
 
     # ── data ─────────────────────────────────────────────────────────────────
     train_seqs, val_seqs = _load_dataset(ds_cfg)
@@ -219,18 +235,29 @@ def main(config_path: str) -> None:
 
         optimizer.zero_grad()
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+        grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
         optimizer.step()
         scheduler.step()
         step += 1
 
         if step % log_every == 0:
             lr_now = scheduler.get_last_lr()[0]
-            wandb.log({"train/loss": loss.item(), "train/lr": lr_now}, step=step)
+            wandb.log({
+                "train/loss":      loss.item(),
+                "train/lr":        lr_now,
+                "train/grad_norm": grad_norm.item(),
+            }, step=step)
             print(f"  step {step:>5}/{max_steps}  loss={loss.item():.4f}  lr={lr_now:.2e}", flush=True)
 
         if step % eval_every == 0 or step == max_steps:
             metrics = _eval_step(model, tokenizer, val_seqs, device)
+            # per-family breakdown (only when family_prefix is active)
+            if ds_cfg.get("family_prefix"):
+                for fam, fam_seqs in _split_by_family(val_seqs).items():
+                    if len(fam_seqs) >= 5:
+                        fm = _eval_step(model, tokenizer, fam_seqs, device,
+                                        n_samples=min(100, len(fam_seqs)))
+                        metrics.update({f"eval_{fam}/{k.split('/')[-1]}": v for k, v in fm.items()})
             wandb.log(metrics, step=step)
             top1 = metrics["eval/top1"]
             print(f"[eval] step={step}  top1={top1:.4f}  top3={metrics['eval/top3']:.4f}"
