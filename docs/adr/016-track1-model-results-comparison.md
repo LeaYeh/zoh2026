@@ -110,6 +110,61 @@ The correct answer is always within the model's top-3 predictions. This makes Ta
 
 ---
 
+## Model Design Analysis by Task
+
+### Task 1 — Next-Step Prediction
+
+| Model | Strength | Weakness |
+|---|---|---|
+| **Bigram** | Near-perfect on deterministic positions (H≈0 bits, 38–48% of steps) | Fails at optional-step branch points; no context beyond previous step |
+| **GPT-2 zero-shot** | None | No domain knowledge; BPE tokenizer splits step names into sub-tokens |
+| **gpt2_mac_local** (no fam) | Full-sequence context — learns long-range dependencies bigram cannot | No family token: IGBT litho levels 5–6 indistinguishable from MOSFET/IC levels 5–6 (if they existed) |
+| **Exp A** (+ fam token) | Family token reduces prediction entropy 0.16–0.33 bits; IGBT litho-level 5/6 correctly gated | No physical prior — embedding space starts random, learns purely from co-occurrence |
+| **Exp B** (+ desc init) | Physically similar steps cluster from step 0 (thermal steps near each other, litho levels ordered) | 62/198 steps have no parameter data (numeric=0 fallback); may not help in 200-step window |
+| **Exp C** (+ cat embed) | Per-category residual lets all litho steps share a learned offset — should help at branch points within a category | `cat_embed` is zero-init; needs more training steps to activate; only 8 categories may be too coarse |
+
+**Bottleneck for Task 1:** high-entropy positions — optional measurements and litho-cycle branch points.
+Steps with H > 1.5 bits are the only ones where model design differences will show up.
+
+---
+
+### Task 2 — Sequence Completion
+
+| Model | Strength | Weakness |
+|---|---|---|
+| **Bigram (greedy)** | Fast; works on deterministic backbone | **Token Accuracy=6.2%**: one wrong step cascades — all successors are then in a wrong state |
+| **gpt2_mac_local** (beam=1) | Full-context autoregressive; Top-3=100% → correct next step always in top 3 | Greedy decode still possible; no beam search implemented yet |
+| **Exp A** (beam≥3) | Family token ensures correct family-specific block order (IC tungsten path, IGBT 4 implants) | Without beam search, same cascading risk as bigram at optional steps |
+| **Exp B/C** (+ desc/cat) | Description init may reduce first-token errors at physically distinct branch points | Marginal effect — Task 2 improvement mostly driven by beam search width, not embedding init |
+
+**Key lever for Task 2:** beam search width. Top-3=100% means beam width=3 never drops the correct
+continuation. Implementing beam search in `complete_sequence` is higher priority than embedding ablation
+for this task.
+
+**Error cascade analysis:**
+```
+Bigram greedy:  wrong step → OOV from-step → global frequency fallback → all subsequent steps wrong
+GPT-2 greedy:   wrong step → shifted context → next prediction off-distribution → cascade
+GPT-2 beam=3:   3 candidates kept at each step → correct path survives → no cascade
+```
+
+---
+
+### Task 3 — Anomaly Detection
+
+| Model | ROC-AUC | Rule Attribution | Verdict |
+|---|:---:|:---:|---|
+| **Bigram** | 0.996* | ✗ | *Synthetic swaps only. Real rule violations are window/global ordering — bigram-invisible |
+| **GPT-2 perplexity** | 0.57 | ✗ | Near random; WebText perplexity cannot distinguish process rule violations |
+| **Rule Checker** (`validate_sequence`) | ~1.000 | ✓ | Uses same logic as organizer ground truth; returns exact rule IDs at no cost |
+
+**All 10 forbidden rules are window-based (6–15 steps) or global ordering constraints.
+No ML model can substitute for the deterministic rule checker.** (ADR-010)
+
+Task 3 is closed. Effort freed → focus on Task 2 beam search.
+
+---
+
 ## Open Questions for Leonardo
 
 1. Does family token (`family_prefix=true`) improve Top-1 above 0.810? (Exp A vs mac_local)
