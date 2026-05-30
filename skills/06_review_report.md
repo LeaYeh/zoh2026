@@ -1,6 +1,6 @@
 # Skill 06 — Experiment Review Report
 
-Trigger: after EVERY training run or backtest. No exceptions.
+Trigger: after EVERY training run. No exceptions.
 
 ## Required output format
 
@@ -11,28 +11,31 @@ Trigger: after EVERY training run or backtest. No exceptions.
 - Relative to previous run, only changed: [one variable — if more than one, flag it]
 
 ### Results
-- Metric: [value]  (e.g. Sharpe: 1.42, MAE: 0.031)
-- Fold breakdown (if CV): Fold 1: x, Fold 2: x, ..., mean ± std
+- Top-1 Accuracy: x.xxxx
+- Top-3 Accuracy: x.xxxx
+- MRR: x.xxxx
+- Edit Distance (val): x.xxxx  (lower = better)
+- Anomaly F1 (val): x.xxxx
+- WandB run: [run ID or link]
 
 ### Comparison
-- Previous best: [value + run_name]
-- Delta: +/- [value]
-- WandB run: [link or run ID]
+- Previous best Top-1: x.xxxx ([run_name])
+- Delta: +/- x.xxxx
 
 ### Anomaly Checks
-- [ ] Fold variance too high? (CV std > 20% of mean = flag)
-- [ ] Any fold with NaN / Inf loss?
-- [ ] Backtest Sharpe < 0? (agent losing money — stop)
-- [ ] Max drawdown > 30%? (risk too high — investigate)
-- [ ] CV improving but backtest degrading? (overfit to val — stop)
+- [ ] Top-1 < 0.10 after 500 steps? (model not learning — check attention_mask)
+- [ ] Edit Distance > 0.80? (completions almost random — check EOS handling)
+- [ ] F1 < 0.52? (anomaly barely above random — check threshold calibration)
+- [ ] Top-1 improving but F1 degrading? (needs GRPO)
+- [ ] Any NaN / Inf in predictions?
+- [ ] Val Top-1 plateauing while train loss still dropping? (overfitting)
 
 ### Recommendation
-- Keep this run: [Yes / No + one-line reason]
-- Next experiment: [specific change to try]
+- Keep: [Yes / No + one-line reason]
+- Next step: [specific next experiment]
 
 ### Human Decision Required
-- [List any open questions explicitly, e.g.:
-  "Fold 3 Sharpe is 0.2 vs 1.8 average — suspected regime anomaly in 2020-03, check manually"]
+- [List explicitly, e.g. "Top-1=0.38 — just below 0.40 gate threshold, evaluate if more steps help"]
 ```
 
 ## Rules
@@ -40,3 +43,4 @@ Trigger: after EVERY training run or backtest. No exceptions.
 - Never omit the "Human Decision Required" section (write "None" if clean)
 - If delta is negative: explicitly state whether to keep or discard
 - WandB run link must be included so humans can verify
+- If multiple variables changed: flag it and treat results as uninterpretable

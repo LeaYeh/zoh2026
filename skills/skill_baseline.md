@@ -1,59 +1,43 @@
-# Skill: Baseline — Zero-Shot Chronos Standard Flow
+# Skill: GPT-2 Baseline Training
 
-Trigger: "run baseline", "zero-shot", Gate 1 setup.
+Trigger: "train", "baseline", "GPT-2", "run model", Gate 1 setup.
 
 ## Goal
-Get a real number in wandb within 30 minutes of data arriving.
-This is the number every subsequent experiment must beat.
+`uv run python src/train.py configs/exp/gpt2_finetune_v1.yaml` completes,
+WandB shows decreasing loss and `eval/top1` improving past 0.40 by step 1000.
 
-## Step 1: Create baseline config (2 min)
-Copy `configs/exp/chronos_zeroshot_dummy.yaml` → `configs/exp/chronos_zeroshot_v0.yaml`.
+## Pre-training checklist
+- [ ] `data/raw/training_data/IC_variants.csv` (and IGBT, MOSFET) exists
+- [ ] `.env` has valid `WANDB_API_KEY`
+- [ ] Smoke-test passes: `WANDB_MODE=disabled uv run python src/train.py configs/exp/gpt2_dummy.yaml`
+- [ ] GPU visible: `python -c "import torch; print(torch.cuda.is_available())"`
 
-Fill in based on EDA output:
-```yaml
-run_name: chronos_zeroshot_v0
-dataset:
-  name: <actual dataset path or gluonts name>
-model:
-  name: chronos
-  checkpoint: amazon/chronos-t5-small   # start small, upgrade if time
-  context_length: <from EDA classification>
-  prediction_length: <competition spec>
-  num_samples: 20
-  finetune:
-    method: none
-training:
-  max_steps: 0
-```
-
-## Step 2: Run (< 5 min on CPU, < 1 min on A100)
+## Training command
 ```bash
-uv run python src/train.py configs/exp/chronos_zeroshot_v0.yaml
+uv run python src/train.py configs/exp/gpt2_finetune_v1.yaml
 ```
 
-## Step 3: Record results
-Copy the wandb run ID + all metrics into CLAUDE.md:
-```
-Best baseline Sharpe / CRPS: <value>  (run: chronos_zeroshot_v0)
-```
+## What to watch in WandB
+| Metric | Target |
+|---|---|
+| `train/loss` | ~4.8 → <2.0 over 3000 steps |
+| `eval/top1` | ≥ 0.40 by step 1000 |
+| `eval/top3` | Typically 2–3× top1 |
+| `eval/mrr` | Should exceed top1 |
 
-## Step 4: Gate 1 check (Hour 2)
-Present to human:
-- Baseline CRPS: X.XX
-- Baseline MAE: X.XX
-- Does coverage_80 ≈ 80%? If far off, quantile calibration is broken — flag immediately.
+## Gate 1 pass criteria (human must confirm)
+- [ ] Training runs without error
+- [ ] Loss decreasing after 100 steps
+- [ ] Checkpoint saved at `data/oof/gpt2_finetune_v1/model.pt`
+- [ ] WandB run visible
 
-Wait for Gate 1 approval before starting fine-tuning.
+## Troubleshooting
+| Symptom | Fix |
+|---|---|
+| Loss stuck at ~4.8 | Check `labels=-100` on PAD and `attention_mask` passed |
+| `vocab_size mismatch` | Delete checkpoint, rebuild tokenizer |
+| OOM on GPU | Reduce `batch_size` from 64 to 32 |
+| `No CSV files found` | Check `dataset.train_path` in yaml |
+| Top-1 < 0.10 at step 500 | Lower LR to 2e-4, or generate 2000 more sequences per family |
 
-## Common issues
-| Symptom | Cause | Fix |
-|---|---|---|
-| CRPS very high (> 10×MAE) | Samples have huge variance | Reduce num_samples to 10, check normalization |
-| coverage_80 < 40% | Predictions too narrow | Check prediction_length matches data |
-| coverage_80 > 95% | Predictions too wide | Check if target was scaled |
-| OOM on CPU | Series too long | Reduce context_length to 128 |
-
-## Upgrade path (if time allows)
-- `chronos-t5-small` → `chronos-t5-base` → `chronos-t5-large`
-- Each size roughly 2× better CRPS, 4× slower
-- On A100: large is feasible; on CPU: stick with small
+See `process-sequence-modeling/references/01-architecture-training.md` for full guide.
