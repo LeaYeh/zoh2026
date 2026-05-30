@@ -5,16 +5,17 @@
 
 ---
 
-## Skill Map
+## Skill Map — Track 1: Industrial AI (Infineon)
 
 | Task type | Required skill | Trigger keywords |
 |-----------|---------------|-----------------|
-| Data exploration | `01_eda.md` | EDA, explore data, look at data, exploratory |
-| CV setup | `02_cv_and_validation.md` | CV, fold, validation |
-| Feature engineering | `03_features.md` | feature, FE |
-| Model training | `04_training.md` | train, baseline, model |
-| Ensemble | `05_ensemble.md` | ensemble, stacking, blending |
-| Write report | `06_review_report.md` | after every training / ensemble run |
+| Data exploration | `skill_eda.md` | EDA, explore data, look at sequences, data arrives |
+| Model training | `skill_baseline.md` | train, baseline, GPT-2, run model |
+| Fine-tuning / GRPO | `skill_finetune.md` | fine-tune, GRPO, RL training, rule-based reward, forgetting |
+| Evaluation & metrics | `skill_eval.md` | evaluate, Top-1, MRR, edit distance, F1, ROC-AUC, anomaly |
+| Submission | `skill_demo.md` | submit, nextstep.csv, completion.csv, anomaly.csv, demo |
+| Write report | `06_review_report.md` | after every training run |
+| **Full knowledge base** | `process-sequence-modeling/SKILL.md` | GPT-2, transformer, sequence-model, process-steps, causal-LM, tokenizer, GRPO, catastrophic-forgetting, Top-1, MRR, perplexity, IC, IGBT, MOSFET, generation_rules, submit.py |
 
 ---
 
@@ -24,7 +25,7 @@
 Even if Claude knows how to do something, if a skill exists for it, **read that skill first** and follow its steps.
 
 ### 2. Report is mandatory
-After any training or ensemble run, **must** produce a report following `06_review_report.md`.
+After any training run, **must** produce a report following `06_review_report.md`.
 The "anomaly flags" and "human decision required" fields cannot be omitted.
 
 ### 3. Gates require human confirmation
@@ -46,29 +47,27 @@ No infinite retry loops.
 
 **Bad:**
 ```
-Human: Run an XGBoost baseline
+Human: Run the GPT-2 baseline
 AI: Sure, let me write the code [immediately starts coding]
 ```
 
 **Good:**
 ```
-Human: Run an XGBoost baseline
-AI: Reading skills/04_training.md first...
+Human: Run the GPT-2 baseline
+AI: Reading skills/process-sequence-modeling/SKILL.md first...
     [done]
     Per skill rules:
-    - Use train_oof() unified function
-    - Load data/folds.pkl
-    - Save OOF to data/oof/
+    - One token = one step name (never split step strings)
+    - PAD positions must be masked with labels=-100
+    - Save checkpoint on best eval/top1
     - Produce review report after run
-    - Log everything to wandb
+    - Log everything to WandB
 
     I will modify:
-    - configs/exp/xgb_v0.yaml (new)
-    - data/oof/train_oof_xgb_v0.npy (new)
-    - data/oof/test_preds_xgb_v0.npy (new)
-    - reports/xgb_v0.md (new)
+    - configs/exp/gpt2_finetune_v1.yaml (verify settings)
+    - data/oof/gpt2_finetune_v1/ (new checkpoint)
 
-    I will NOT touch: data/raw/, data/folds.pkl
+    I will NOT touch: data/raw/, data/raw/training_data/
 
     Proceed?
 ```

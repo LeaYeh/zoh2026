@@ -1,78 +1,46 @@
-# Skill: Fine-tune — LoRA Standard Flow
+# Skill: GRPO Fine-tuning
 
-Trigger: "fine-tune", "LoRA", Gate 1 passed, baseline established.
+Trigger: "fine-tune", "GRPO", "RL training", "rule-based reward", "forgetting", Gate 1 passed.
 
 ## Prerequisites
-- [ ] Gate 1 approved (baseline CV direction confirmed)
-- [ ] `data/oof/chronos_zeroshot_v0_preds.npy` exists
-- [ ] CLAUDE.md shows baseline CRPS/MAE
+- [ ] Gate 1 approved (GPT-2 baseline Top-1 ≥ 0.40)
+- [ ] Checkpoint at `data/oof/gpt2_finetune_v1/`
+- [ ] `data/raw/training_data/generation_rules.md` read (understand 10 forbidden rules)
 
-## Step 1: Create LoRA config
-Copy `configs/exp/chronos_lora_dummy.yaml` → `configs/exp/chronos_lora_v0.yaml`.
+## When to use GRPO vs. scaling
 
-Key settings:
+| Situation | Action |
+|---|---|
+| Top-1 ≥ 0.4 but F1 (anomaly) < 0.6 | Use GRPO with rule-based reward |
+| Top-1 stalls < 0.4 after 3000 steps | Fix architecture/data first |
+| Top-1 ≥ 0.4, F1 ≥ 0.6, time left | Scaling experiment (n_embd=512) |
+
+## GRPO config additions
 ```yaml
-run_name: chronos_lora_v0
-dataset:
-  name: <same as baseline>
-model:
-  name: chronos
-  checkpoint: amazon/chronos-t5-small
-  context_length: <same as baseline>
-  prediction_length: <same as baseline>
-  finetune:
-    method: lora
-    lora_r: 8          # start conservative
-    lora_alpha: 32     # alpha = 4×r is a good default
-    lora_dropout: 0.1
-    target_modules: [q, v]   # attention layers only
+# Add to gpt2_finetune_v1.yaml for GRPO phase
+run_name: gpt2_grpo_v1
 training:
-  max_steps: 200      # CPU: 200 steps ~5min; A100: use 1000+
-  batch_size: 4       # increase on A100 (try 32-64)
-  learning_rate: 5.0e-5  # lower than full FT
+  lr: 5.0e-5          # 10× lower than causal LM phase
+  steps: 1000
+  grpo_group_size: 8
+  grpo_kl_penalty: 0.05
+  replay_ratio: 0.2   # 20% original seqs to prevent forgetting
 ```
 
-## Step 2: Run
-```bash
-uv run python src/train.py configs/exp/chronos_lora_v0.yaml
-```
-
-Watch for:
-- Loss at step 0 (should match baseline roughly)
-- Loss at step 100 (should be clearly lower)
-- If loss is *increasing*: lr is too high → halve it, restart
-
-## Step 3: A100-specific settings
-Before running on A100, prepend to your script:
+## GRPO reward function
 ```python
-import torch
-torch.backends.cuda.matmul.allow_tf32 = True
-torch.set_float32_matmul_precision("high")
-```
-In config: `precision: bf16-mixed` (already set in Lightning trainer).
-Typical A100 speedup: 8–12× vs CPU.
+# Use organizer's validator as reward signal
+from scripts.generate_sequences import validate_sequence  # organizer's script
 
-## Step 4: Checkpoint verification
-After run completes, confirm checkpoint loads:
-```python
-from peft import PeftModel
-from transformers import T5ForConditionalGeneration
-base = T5ForConditionalGeneration.from_pretrained("amazon/chronos-t5-small")
-model = PeftModel.from_pretrained(base, "data/oof/chronos_lora_v0")
-print("Checkpoint OK")
+def compute_reward(generated_steps, family):
+    violations = validate_sequence(generated_steps, family)
+    return 1.0 if not violations else 0.0
 ```
 
-## Step 5: Compare vs baseline
-Run Skill 06 review report. Key check:
-- CRPS(LoRA) < CRPS(zero-shot)? → keep, increment v number
-- CRPS higher? → do not use, investigate (lr too high? not enough steps?)
+## Catastrophic forgetting prevention
+Always use replay_ratio ≥ 0.2. Monitor `eval/top1` — if it drops > 10% from baseline, stop GRPO.
 
-## Ablation order (change one at a time, Rule 5)
-1. `lora_r`: 4 → 8 → 16 (more params, higher risk of overfit)
-2. `learning_rate`: 1e-4 → 5e-5 → 1e-5
-3. `max_steps`: 200 → 500 → 1000 (diminishing returns after ~500)
-4. `target_modules`: [q, v] → [q, k, v, o] (more layers)
-5. Checkpoint size: small → base → large (only after pipeline is stable)
+## Gate 2 signal
+If last 3 GRPO runs improved F1 by < 0.02 each → stop, move to submission generation.
 
-## Gate 2 signal (Hour 12)
-If last 3 runs improved CRPS by < 0.01 each → stop FT, move to agent layer.
+See `process-sequence-modeling/references/02-finetuning-grpo.md` for full GRPO implementation.

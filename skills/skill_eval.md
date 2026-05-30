@@ -1,70 +1,49 @@
-# Skill: Evaluation — Metrics and CV Logic
+# Skill: Evaluation — Track 1 Metrics
 
-Trigger: "evaluate", "metrics", "CV setup", any post-training review.
+Trigger: "evaluate", "metrics", "Top-1", "MRR", "edit distance", "F1", "ROC-AUC", "anomaly", any post-training review.
 
-## Primary metric: CRPS (Continuous Ranked Probability Score)
-Lower is better. Measures probabilistic forecast quality.
-`src/evaluator.py` computes it automatically after every run.
+## Primary metric: eval/top1 (Task 1 Top-1 Accuracy)
+Higher is better. Fraction of val samples where the true next step is the model's top prediction.
 
-Secondary metrics in order of importance:
-1. **CRPS** — probabilistic accuracy (primary)
-2. **MASE** — point forecast vs naive baseline (> 1.0 = worse than naive, unacceptable)
-3. **Coverage 80%** — should be 75–85%. Far outside = calibration failure.
-4. **MAE / RMSE** — point accuracy (less important than CRPS for probabilistic models)
+## Three tasks, three metric groups
 
-## Using evaluator.py
+| Task | Primary metric | Secondary |
+|---|---|---|
+| 1 Next-Step | Top-1 Accuracy | Top-3, Top-5, MRR |
+| 2 Completion | Normalized Edit Distance ↓ | Exact Match Rate, Token Accuracy |
+| 3 Anomaly | F1 | ROC-AUC, Binary Accuracy |
+
+## Using process_metrics.py
 ```python
-from src.evaluator import evaluate, naive_scale_from_series
+from src.evaluation.process_metrics import (
+    evaluate_next_step, evaluate_completion, evaluate_anomaly
+)
 
-# predictions: (n_series, n_samples, pred_len)
-# ground_truth: (n_series, pred_len)
-# naive_scale: (n_series,) — mean |y_t - y_{t-1}| on training window
+# Task 1
+t1 = evaluate_next_step(ranked_preds, targets)
+print(f"Top-1: {t1.top1:.4f}  MRR: {t1.mrr:.4f}")
 
-metrics = evaluate(predictions, ground_truth, naive_scale)
-print(metrics.to_dict())
+# Task 3
+from src.models.process_lm import anomaly_score
+scores = [anomaly_score(model, tok, seq) for seq in val_seqs]
+t3 = evaluate_anomaly(scores, labels)
+print(f"F1: {t3.f1:.4f}  ROC-AUC: {t3.roc_auc:.4f}")
 ```
 
-## Time-series CV: rolling origin (no random splits, ever)
-```python
-from src.evaluator import rolling_origin_splits
+## Anomaly checklist (after every run)
+- [ ] Top-1 < 0.40? → model not learning structure, check architecture
+- [ ] Edit distance > 0.60? → completions are random, check EOS handling
+- [ ] F1 < 0.55? → anomaly detection barely better than random, check threshold calibration
+- [ ] Top-1 improving but F1 degrading? → model learns plausibility but loses rule-awareness — use GRPO
+- [ ] Any NaN in predictions? → check tokenizer decode, check `max_new_steps` is large enough
 
-splits = rolling_origin_splits(n=len(series), pred_len=24, n_windows=5)
-for train_idx, test_idx in splits:
-    train = series[train_idx]
-    test = series[test_idx]
-    # train model on `train`, predict `test`
-```
+## Metric targets
+| Metric | Baseline (random) | Good | Excellent |
+|---|---|---|---|
+| Top-1 | ~0.8% | >0.40 | >0.65 |
+| MRR | ~0.02 | >0.50 | >0.70 |
+| Edit Distance ↓ | ~1.0 | <0.30 | <0.15 |
+| F1 | ~0.50 | >0.65 | >0.80 |
+| ROC-AUC | 0.50 | >0.75 | >0.90 |
 
-**Why not K-fold:** random splits let the model see future data during training → results are invalid. Every paper that uses random CV on time series is wrong.
-
-## Anomaly checklist (run after every experiment)
-- [ ] MASE > 1.0 → model is worse than naive. Do not submit. Investigate.
-- [ ] coverage_80 < 50% → predictions systematically too narrow. Check scaling.
-- [ ] coverage_80 > 95% → predictions too wide. Model learned uncertainty > signal.
-- [ ] CRPS improving but MAE degrading → probabilistic calibration traded off against point accuracy. Usually fine; check if task cares about point or interval.
-- [ ] Any NaN in predictions → data has inf/nan. Check `data/raw/` for bad values.
-
-## MASE denominator (naive scale)
-```python
-# For non-seasonal data (financial):
-scale = np.mean(np.abs(np.diff(train_series)))
-
-# For seasonal data (electricity, freq=24 for daily):
-scale = np.mean(np.abs(train_series[24:] - train_series[:-24]))
-```
-Set `freq` in `naive_scale_from_series(series, freq=<seasonality>)`.
-
-## Pinball loss interpretation
-- pinball_10 = loss when you bet "actual will be above q10"
-- pinball_50 ≈ MAE/2 (for symmetric distributions)
-- pinball_90 = loss when you bet "actual will be below q90"
-Lower = better calibrated quantile forecasts.
-
-## Comparing two runs
-Use this template (from Skill 06):
-```
-run_A CRPS: 2.58  coverage_80: 46.9%
-run_B CRPS: 2.51  coverage_80: 48.9%
-Delta CRPS: -0.07 (-2.7%) ✓ keep run_B
-```
-A delta of < 0.5% CRPS improvement = noise, not signal.
+See `process-sequence-modeling/references/03-evaluation-submission.md` for submission format details.

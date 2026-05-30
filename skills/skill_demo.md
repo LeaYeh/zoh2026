@@ -1,59 +1,59 @@
-# Skill: Demo — Deployment and Live Demo
+# Skill: Demo & Submission
 
-Trigger: "demo", "deploy", Gate 4 setup, Hour 28+.
+Trigger: "demo", "submit", "nextstep.csv", "completion.csv", "anomaly.csv", Gate 4 setup.
 
 ## Goal
-`uv run python app/demo.py` → Gradio UI running on port 7860, ready in < 2 minutes.
-Evaluator can type a symbol, see BUY/SELL/HOLD + reasoning live.
+1. `uv run python app/demo.py` → Gradio UI at port 7860, model loaded, all 3 actions working
+2. `uv run python scripts/submit.py ...` → 3 valid submission CSVs generated
 
-## Pre-demo checklist (do this at Hour 28, not Hour 30)
-- [ ] Best model checkpoint is in `data/oof/<best_run>/`
-- [ ] `.env` has valid `ANTHROPIC_API_KEY` and `WANDB_API_KEY`
-- [ ] `uv run python scripts/verify_setup.py` passes all checks
-- [ ] `uv run python app/demo.py` starts without error
-- [ ] Test with at least 3 symbols manually (AAPL, TSLA, MSFT or competition assets)
-- [ ] Agent produces a decision (not an error) for each
+## Pre-demo checklist
+- [ ] Best model checkpoint at `data/oof/<best_run>/model.pt`
+- [ ] `data/raw/eval_input_valid.csv` exists (from organizers)
+- [ ] `data/raw/eval_input_anomaly.csv` exists (from organizers)
+- [ ] `.env` has valid `WANDB_API_KEY`
+- [ ] Demo loads without error: `uv run python app/demo.py`
+- [ ] Test all 3 Gradio actions with a sample sequence
 
-## Loading the best checkpoint into the demo
-
-Edit `app/demo.py` to load your fine-tuned model:
-```python
-# At top of demo.py, after imports:
-from chronos import ChronosPipeline
-from peft import PeftModel
-import torch
-
-BASE = "amazon/chronos-t5-small"
-CKPT = "data/oof/<best_run_name>"
-
-pipeline = ChronosPipeline.from_pretrained(BASE, dtype=torch.float32, device_map="cpu")
-pipeline.model.model = PeftModel.from_pretrained(pipeline.model.model, CKPT)
-pipeline.model.model.eval()
-```
-Then pass `pipeline` to your `forecast_node` binding.
-
-## Gradio UI tips for live demo
-- Add a "Random Example" button → pre-fill a symbol so evaluator can click one button
-- Show the forecast chart (matplotlib inline) next to the decision
-- Print the agent reasoning below the BUY/SELL/HOLD badge
-
-```python
-with gr.Row():
-    decision_badge = gr.Label(label="Decision")
-    chart = gr.Plot(label="Forecast")
-reasoning_box = gr.Textbox(label="Agent Reasoning", lines=4)
+## Generate submission files
+```bash
+uv run python scripts/submit.py \
+  --eval-valid   data/raw/eval_input_valid.csv \
+  --eval-anomaly data/raw/eval_input_anomaly.csv \
+  --output-dir   submission/
 ```
 
-## If the demo crashes during judging
-- Have fallback mode ready: `run(symbol, price, llm_client=None)` uses rule-based decisions
-- Keep a Jupyter notebook `notebooks/demo_backup.ipynb` with the same flow (manual run)
-- Always have the WandB dashboard open: https://wandb.ai/lea-yeh-ml-42-vienna/zoh2026
+Output: `submission/nextstep.csv`, `submission/completion.csv`, `submission/anomaly.csv`
 
-## Gate 4 (Hour 30) checklist
+## Validate before submitting
+```bash
+# Check format — first few lines of each file
+head -3 submission/nextstep.csv
+head -3 submission/completion.csv
+head -3 submission/anomaly.csv
+
+# Validate against organizer's eval_metrics.py (if ground truth available)
+python data/raw/training_data/../eval_metrics.py \
+  --task anomaly --predictions submission/anomaly.csv
+```
+
+## Demo fallback (if model fails to load)
+```bash
+# Re-run quick training (200 steps, ~2 min)
+WANDB_MODE=disabled uv run python src/train.py configs/exp/gpt2_dummy.yaml
+uv run python app/demo.py
+```
+
+## Gate 4 checklist
 - [ ] Demo starts in < 2 minutes
-- [ ] Agent produces a decision for any ticker input
+- [ ] Predict Next Step → bar chart appears
+- [ ] Complete Sequence → full sequence shown
+- [ ] Check Anomaly → perplexity verdict shown
+- [ ] 3 submission CSVs generated and format-checked
 - [ ] WandB shows best run metrics
-- [ ] Backup notebook works
-- [ ] CRPS / Sharpe of best model is recorded in CLAUDE.md
 
-After Gate 4 approval: enter buffer time. No new experiments. Only demo polish.
+## Submission repo checklist (before Tally form)
+- [ ] Repo is PUBLIC
+- [ ] `LICENSE` file at root (MIT)
+- [ ] `REPORT.md` at root (filled in with actual results)
+- [ ] `requirements.txt` present
+- [ ] No secrets in repo history
