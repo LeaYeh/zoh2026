@@ -181,9 +181,8 @@ def build_description_feature_matrix(
     features = torch.tensor(rows, dtype=torch.float32)          # [n_steps, 11]
     features = torch.cat([features, tfidf_vecs], dim=1)         # [n_steps, 27]
 
-    # Project 27 → n_embd with a fixed random linear layer (same seed for reproducibility)
-    gen = torch.Generator().manual_seed(42)
-    proj_weight = torch.empty(n_embd, features.shape[1]).normal_(0, 1.0 / math.sqrt(features.shape[1]), generator=gen)
+    # Project 27 → n_embd; caller sets global seed before build_model()
+    proj_weight = torch.empty(n_embd, features.shape[1]).normal_(0, 1.0 / math.sqrt(features.shape[1]))
     projected = features @ proj_weight.T                        # [n_steps, n_embd]
 
     # L2-normalise then scale to match GPT-2 default init std (~0.02)

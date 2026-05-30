@@ -121,6 +121,10 @@ def main(config_path: str) -> None:
     train_cfg = cfg.get("training", {})
     ds_cfg    = cfg.get("dataset", {})
 
+    seed = ds_cfg.get("seed", 42)
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+
     wandb.init(
         project=os.getenv("WANDB_PROJECT", "zoh2026"),
         name=run_name,
