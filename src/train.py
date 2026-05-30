@@ -59,6 +59,7 @@ def _load_dataset(cfg: dict) -> tuple[list[list[str]], list[list[str]]]:
             sequence_col=cfg.get("sequence_col", "SEQUENCE_ID"),
             step_col=cfg.get("step_col", "STEP"),
             min_length=cfg.get("min_length", 5),
+            family_prefix=cfg.get("family_prefix", False),
         )
     elif name == "dummy":
         rng = np.random.default_rng(42)
