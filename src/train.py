@@ -125,19 +125,22 @@ def main(config_path: str) -> None:
     torch.manual_seed(seed)
     np.random.seed(seed)
 
+    wandb_cfg = cfg.get("wandb", {})
     wandb.init(
         project=os.getenv("WANDB_PROJECT", "zoh2026"),
         name=run_name,
+        group=wandb_cfg.get("group"),
+        notes=wandb_cfg.get("notes"),
         config=cfg,
-        tags=["track1", model_cfg.get("type", "gpt2_scratch")],
+        tags=["track1", model_cfg.get("type", "gpt2_scratch")] + wandb_cfg.get("tags", []),
     )
 
     # ── data ─────────────────────────────────────────────────────────────────
     train_seqs, val_seqs = _load_dataset(ds_cfg)
-    print(f"[train] {len(train_seqs)} train / {len(val_seqs)} val sequences")
+    print(f"[train] {len(train_seqs)} train / {len(val_seqs)} val sequences", flush=True)
 
     tokenizer = ProcessStepTokenizer.build(train_seqs + val_seqs)
-    print(f"[train] vocab size: {tokenizer.vocab_size}")
+    print(f"[train] vocab size: {tokenizer.vocab_size}", flush=True)
     wandb.config.update({"model/vocab_size": tokenizer.vocab_size}, allow_val_change=True)
 
     max_len    = model_cfg.get("max_seq_len", 256)
@@ -156,7 +159,7 @@ def main(config_path: str) -> None:
         device = torch.device("mps")
     else:
         device = torch.device("cpu")
-    print(f"[train] device: {device}")
+    print(f"[train] device: {device}", flush=True)
 
     model = build_model(
         tokenizer,
@@ -170,7 +173,7 @@ def main(config_path: str) -> None:
     ).to(device)
 
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    print(f"[train] parameters: {n_params:,}")
+    print(f"[train] parameters: {n_params:,}", flush=True)
     wandb.config.update({"model/n_params": n_params}, allow_val_change=True)
 
     # ── optimiser + scheduler ────────────────────────────────────────────────
@@ -190,11 +193,14 @@ def main(config_path: str) -> None:
     scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, _lr_lambda)
 
     # ── training loop ────────────────────────────────────────────────────────
-    eval_every = train_cfg.get("eval_every", 200)
-    log_every  = train_cfg.get("log_every", 10)
-    step       = 0
-    best_top1  = 0.0
-    data_iter  = iter(train_loader)
+    eval_every    = train_cfg.get("eval_every", 200)
+    log_every     = train_cfg.get("log_every", 10)
+    es_patience   = train_cfg.get("early_stopping_patience", 0)  # 0 = disabled
+    step          = 0
+    best_top1     = 0.0
+    no_improve    = 0
+    stopped_early = False
+    data_iter     = iter(train_loader)
 
     model.train()
     while step < max_steps:
@@ -221,31 +227,40 @@ def main(config_path: str) -> None:
         if step % log_every == 0:
             lr_now = scheduler.get_last_lr()[0]
             wandb.log({"train/loss": loss.item(), "train/lr": lr_now}, step=step)
-            print(f"  step {step:>5}/{max_steps}  loss={loss.item():.4f}  lr={lr_now:.2e}")
+            print(f"  step {step:>5}/{max_steps}  loss={loss.item():.4f}  lr={lr_now:.2e}", flush=True)
 
         if step % eval_every == 0 or step == max_steps:
             metrics = _eval_step(model, tokenizer, val_seqs, device)
             wandb.log(metrics, step=step)
             top1 = metrics["eval/top1"]
             print(f"[eval] step={step}  top1={top1:.4f}  top3={metrics['eval/top3']:.4f}"
-                  f"  mrr={metrics['eval/mrr']:.4f}")
+                  f"  mrr={metrics['eval/mrr']:.4f}", flush=True)
 
             if top1 > best_top1:
-                best_top1 = top1
-                ckpt_path = CKPT_DIR / run_name
+                best_top1  = top1
+                no_improve = 0
+                ckpt_path  = CKPT_DIR / run_name
                 ckpt_path.mkdir(parents=True, exist_ok=True)
                 torch.save(model.state_dict(), ckpt_path / "model.pt")
                 tokenizer.save(ckpt_path / "tokenizer.json")
                 wandb.log({"eval/best_top1": best_top1}, step=step)
-                print(f"[ckpt] saved  best_top1={best_top1:.4f}")
+                print(f"[ckpt] saved  best_top1={best_top1:.4f}", flush=True)
+            else:
+                no_improve += 1
+                if es_patience and no_improve >= es_patience:
+                    print(f"[early-stop] no improvement for {no_improve} evals — stopping at step {step}", flush=True)
+                    wandb.log({"early_stop_step": step}, step=step)
+                    stopped_early = True
+                    break
 
-    wandb.summary["eval/best_top1"] = best_top1
-    print(f"[done] best_top1={best_top1:.4f}")
+    wandb.summary["eval/best_top1"]  = best_top1
+    wandb.summary["stopped_early"]   = stopped_early
+    print(f"[done] best_top1={best_top1:.4f}", flush=True)
     wandb.finish()
 
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
-        print("Usage: python src/train.py <config.yaml>")
+        print("Usage: python src/train.py <config.yaml>", flush=True)
         sys.exit(1)
     main(sys.argv[1])

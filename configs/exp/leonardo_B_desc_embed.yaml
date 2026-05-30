@@ -30,3 +30,8 @@ training:
   grad_clip: 1.0
   eval_every: 300
   log_every: 10
+
+wandb:
+  group: leonardo-ablation
+  tags: [leonardo, ablation-B, desc_embed]
+  notes: "Level 2: embedding init from step description features"

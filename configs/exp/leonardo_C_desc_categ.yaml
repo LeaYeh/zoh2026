@@ -32,3 +32,8 @@ training:
   grad_clip: 1.0
   eval_every: 300
   log_every: 10
+
+wandb:
+  group: leonardo-ablation
+  tags: [leonardo, ablation-C, desc_categ]
+  notes: "Level 3: description init + category-aware embedding"

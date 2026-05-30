@@ -29,3 +29,8 @@ training:
   grad_clip: 1.0
   eval_every: 300
   log_every: 10
+
+wandb:
+  group: leonardo-ablation
+  tags: [leonardo, ablation-A, family_token]
+  notes: "Baseline: family prefix token as BOS, random embedding init"
