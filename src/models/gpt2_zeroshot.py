@@ -106,6 +106,7 @@ class GPT2ZeroShot:
         ids = self.hf_tok.encode(text, add_special_tokens=False)
         if len(ids) < 2:
             return 0.0
+        ids = ids[:1024]  # GPT-2 max context window
         input_ids = torch.tensor([ids], dtype=torch.long, device=self.device)
         out = self.model(input_ids, labels=input_ids)
         # out.loss is mean cross-entropy = mean negative log prob per token
