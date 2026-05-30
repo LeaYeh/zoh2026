@@ -185,9 +185,10 @@ def build_description_feature_matrix(
     proj_weight = torch.empty(n_embd, features.shape[1]).normal_(0, 1.0 / math.sqrt(features.shape[1]))
     projected = features @ proj_weight.T                        # [n_steps, n_embd]
 
-    # L2-normalise then scale to match GPT-2 default init std (~0.02)
+    # L2-normalise then scale to match GPT-2 random init norm: std=0.02 × sqrt(n_embd)
+    target_norm = 0.02 * math.sqrt(n_embd)
     norms = projected.norm(dim=1, keepdim=True).clamp(min=1e-8)
-    projected = projected / norms * 0.02
+    projected = projected / norms * target_norm
 
     # Place into full vocab matrix; special tokens stay zero (caller keeps random init)
     special_set = set(SPECIAL_TOKENS)
