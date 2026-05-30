@@ -13,7 +13,8 @@ PAD_TOKEN = "<PAD>"
 BOS_TOKEN = "<BOS>"
 EOS_TOKEN = "<EOS>"
 UNK_TOKEN = "<UNK>"
-SPECIAL_TOKENS = (PAD_TOKEN, BOS_TOKEN, EOS_TOKEN, UNK_TOKEN)
+FAMILY_TOKENS = {"IC": "[IC]", "IGBT": "[IGBT]", "MOSFET": "[MOSFET]"}
+SPECIAL_TOKENS = (PAD_TOKEN, BOS_TOKEN, EOS_TOKEN, UNK_TOKEN) + tuple(FAMILY_TOKENS.values())
 
 
 class ProcessStepTokenizer:
@@ -74,6 +75,20 @@ class ProcessStepTokenizer:
         return tok
 
 
+def _infer_family(stem: str) -> str | None:
+    """Infer product family from a CSV filename stem (case-insensitive).
+    Checks longest names first to avoid 'IC' matching inside 'IGBT'.
+    """
+    s = stem.upper()
+    if "MOSFET" in s:
+        return "MOSFET"
+    if "IGBT" in s:
+        return "IGBT"
+    if "IC" in s:
+        return "IC"
+    return None
+
+
 def load_sequences(
     data_dir: str | Path,
     product_families: list[str] | None = None,
@@ -81,12 +96,16 @@ def load_sequences(
     sequence_col: str = "SEQUENCE_ID",
     step_col: str = "STEP",
     min_length: int = 5,
+    family_prefix: bool = False,
 ) -> list[list[str]]:
     """Load process sequences from CSV files in data_dir.
 
     Expects long-format CSVs: one row per step with sequence_col and step_col.
     If train_files is given, loads exactly those filenames (no globbing).
     Otherwise, if product_families is given, globs for files containing each family name.
+
+    When family_prefix=True, prepends the appropriate [IC]/[IGBT]/[MOSFET] token
+    to every sequence.  Family is inferred from the source filename.
     """
     data_dir = Path(data_dir)
     csv_files: list[Path] = []
@@ -103,6 +122,9 @@ def load_sequences(
 
     all_sequences: list[list[str]] = []
     for csv_path in sorted(set(csv_files)):
+        family = _infer_family(csv_path.stem) if family_prefix else None
+        prefix = [FAMILY_TOKENS[family]] if family else []
+
         try:
             df = pd.read_csv(csv_path)
         except Exception as exc:
@@ -122,11 +144,11 @@ def load_sequences(
             for _, group in df.groupby(seq_col_actual, sort=False):
                 steps = group[step_col_actual].astype(str).tolist()
                 if len(steps) >= min_length:
-                    all_sequences.append(steps)
+                    all_sequences.append(prefix + steps)
         else:
             steps = df[step_col_actual].astype(str).tolist()
             if len(steps) >= min_length:
-                all_sequences.append(steps)
+                all_sequences.append(prefix + steps)
 
     print(f"[loader] {len(all_sequences)} sequences from {len(set(csv_files))} file(s)")
     return all_sequences

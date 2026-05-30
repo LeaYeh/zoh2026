@@ -198,14 +198,135 @@ with open("data/raw/eval_input_anomaly.csv") as f_in, \
 
 ## GPT-2 Fine-Tuning (Leonardo A100)
 
-Fine-tuning must run on the Leonardo supercomputer. Local CPU is too slow (11 s/prediction point).
+Fine-tuning runs on the Leonardo supercomputer (A100 GPUs). Local CPU is for smoke tests only.
+
+### One-time setup on Leonardo login node
 
 ```bash
-# On Leonardo:
-uv run python src/train.py configs/exp/gpt2_finetune_v1.yaml
+git clone <repo-url> && cd ai-competition
+bash scripts/setup_leonardo.sh          # installs uv, syncs deps, runs smoke test
+cp .env.example .env                    # fill in WANDB_API_KEY, WANDB_PROJECT, WANDB_ENTITY
+# Edit scripts/slurm/train.slurm — replace PLACEHOLDER_ACCOUNT with competition account
 ```
 
-This is the main path to beating bigram on Task 2. Target: Token Accuracy > 50%.
+---
+
+### Experiment configs
+
+Three experiments to run in parallel. Each differs by **exactly one variable** (Rule 5):
+
+| Config | family_prefix | embedding_init | category_embed | What it tests |
+|---|:---:|:---:|:---:|---|
+| `leonardo_A_family_token.yaml` | ✓ | random | ✗ | family token alone |
+| `leonardo_B_desc_embed.yaml`   | ✓ | description | ✗ | desc init on top of A |
+| `leonardo_C_desc_categ.yaml`   | ✓ | description | ✓ | cat embed on top of B |
+
+Local 200-step signal (2L/128d):
+- A → best Top-1 = 0.047 (peaks early, overfits)
+- B → best Top-1 = 0.057 (+21% vs A, still improving at step 200)
+- C → best Top-1 = 0.057 (same as B at 200 steps; cat_embed needs more steps to show)
+
+---
+
+### Submit training jobs
+
+```bash
+# submit all three in parallel (each ~2 hours on 1× A100)
+sbatch scripts/slurm/train.slurm configs/exp/leonardo_A_family_token.yaml
+sbatch scripts/slurm/train.slurm configs/exp/leonardo_B_desc_embed.yaml
+sbatch scripts/slurm/train.slurm configs/exp/leonardo_C_desc_categ.yaml
+
+# check job status
+squeue -u $USER
+
+# watch live log
+tail -f zoh-gpt2_<JOB_ID>.out
+```
+
+Checkpoints save to `data/oof/<run_name>/model.pt` + `tokenizer.json` (best val Top-1 only).
+
+---
+
+### Sync WandB after training
+
+Compute nodes have no internet — WandB runs in offline mode automatically.
+
+```bash
+# from the login node after job completes:
+wandb sync ~/zoh2026/wandb/offline-run-*/
+```
+
+---
+
+### Run full evaluation on val set
+
+```bash
+# after training completes, evaluate all three tasks:
+uv run python - << 'EOF'
+import torch
+from src.data.process_loader import ProcessStepTokenizer
+from src.models.process_lm import load_model
+from src.evaluator import run_full_eval
+
+ckpt = "data/oof/leonardo_A_family_token"   # change per run
+tok  = ProcessStepTokenizer.load(f"{ckpt}/tokenizer.json")
+model = load_model(ckpt, tok, device="cuda")
+
+results = run_full_eval(
+    model, tok,
+    eval_valid_csv="data/raw/eval_input_valid.csv",
+    eval_anomaly_csv="data/raw/eval_input_anomaly.csv",
+    device="cuda",
+)
+
+print(f"Task 1  Top-1={results['task1']['top1']:.4f}  MRR={results['task1']['mrr']:.4f}")
+print(f"Task 2  TokenAcc={results['task2']['token_accuracy']:.4f}")
+print(f"Task 3  ROC-AUC={results['task3']['roc_auc']:.4f}")
+EOF
+```
+
+> **Note:** `eval_input_valid.csv` and `eval_input_anomaly.csv` are distributed by organisers
+> during the competition. Task 3 can also use the deterministic rule checker (see below).
+
+---
+
+### Gate checklist before proceeding
+
+```
+Gate 1 — pipeline healthy:
+  [ ] training runs without error for 200 steps
+  [ ] eval/top1 > 0 after step 200
+  [ ] checkpoint saved to data/oof/
+
+Gate 2 — model learning:
+  [ ] best eval/top1 >= 0.40 by step 1000
+  [ ] loss still decreasing at step 3000
+  [ ] no NaN / Inf in predictions
+
+Gate 3 — submission files valid:
+  [ ] uv run python scripts/submit.py --eval-valid ... --eval-anomaly ...
+  [ ] uv run python scripts/generate_sequences.py --validate submission/completion.csv
+```
+
+---
+
+### Local smoke tests (CPU, no GPU needed)
+
+```bash
+# pipeline sanity — dummy data, 200 steps (~1 min)
+WANDB_MODE=disabled uv run python src/train.py configs/exp/gpt2_dummy.yaml
+
+# real data pipeline check — 50 steps, no WandB (~2 min)
+WANDB_MODE=disabled uv run python src/train.py configs/exp/gpt2_real_smoke.yaml
+
+# with family prefix enabled
+WANDB_MODE=disabled uv run python src/train.py configs/exp/gpt2_real_smoke_family.yaml
+
+# quick three-way ablation (2L/128d, 200 steps each, ~3 min total)
+WANDB_MODE=disabled uv run python src/train.py configs/exp/quick_A_rand.yaml
+WANDB_MODE=disabled uv run python src/train.py configs/exp/quick_B_desc.yaml
+WANDB_MODE=disabled uv run python src/train.py configs/exp/quick_C_categ.yaml
+```
 
 ---
 

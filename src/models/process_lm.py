@@ -6,6 +6,7 @@ the provided process CSV data.
 """
 from __future__ import annotations
 import math
+from pathlib import Path
 
 import torch
 import torch.nn as nn
@@ -14,14 +15,70 @@ from transformers import GPT2Config, GPT2LMHeadModel
 from src.data.process_loader import ProcessStepTokenizer, SPECIAL_TOKENS
 
 
+class CategoryAwareEmbedding(nn.Module):
+    """Augments GPT-2's token embedding with a learnable process-category embedding.
+
+    Replaces model.transformer.wte in-place so forward() and generate() work
+    transparently without any changes to the training loop or inference helpers.
+
+    The .weight property proxies the original wte.weight so lm_head weight-tying
+    remains intact — the output projection still operates in token-ID space.
+
+    cat_embed is zero-initialized so it starts as a no-op and learns incrementally.
+    """
+
+    def __init__(
+        self,
+        wte: nn.Embedding,
+        n_categories: int,
+        n_embd: int,
+        step_to_cat: list[int],
+    ) -> None:
+        super().__init__()
+        self.wte = wte
+        self.cat_embed = nn.Embedding(n_categories, n_embd)
+        nn.init.zeros_(self.cat_embed.weight)
+        self.register_buffer(
+            "step_to_cat_ids",
+            torch.tensor(step_to_cat, dtype=torch.long),
+        )
+
+    @property
+    def weight(self) -> torch.Tensor:
+        return self.wte.weight
+
+    def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
+        cat_ids = self.step_to_cat_ids[input_ids]
+        return self.wte(input_ids) + self.cat_embed(cat_ids)
+
+
+def _build_step_to_cat(tokenizer: ProcessStepTokenizer) -> list[int]:
+    from src.models.desc_embed import _category_onehot, N_CATEGORIES
+    result = []
+    for step in tokenizer.id_to_step:
+        if step in SPECIAL_TOKENS:
+            result.append(N_CATEGORIES - 1)  # "other" for special tokens
+        else:
+            onehot = _category_onehot(step)
+            result.append(onehot.index(1.0))
+    return result
+
+
 def build_model(
     tokenizer: ProcessStepTokenizer,
     max_seq_len: int = 256,
     n_embd: int = 256,
     n_layer: int = 6,
     n_head: int = 8,
+    embedding_init: str | None = None,
+    desc_path: str | Path | None = None,
+    category_embed: bool = False,
 ) -> GPT2LMHeadModel:
-    """Build a small GPT-2 from scratch with the process-step vocabulary."""
+    """Build a small GPT-2 from scratch with the process-step vocabulary.
+
+    embedding_init='description' initializes wte from step descriptions (ADR-014).
+    Special tokens keep their random init regardless of embedding_init.
+    """
     config = GPT2Config(
         vocab_size=tokenizer.vocab_size,
         n_positions=max_seq_len,
@@ -35,7 +92,32 @@ def build_model(
         eos_token_id=tokenizer.eos_id,
         pad_token_id=tokenizer.pad_id,
     )
-    return GPT2LMHeadModel(config)
+    model = GPT2LMHeadModel(config)
+
+    if embedding_init == "description" and desc_path is not None:
+        from src.models.desc_embed import build_description_feature_matrix
+        feat = build_description_feature_matrix(
+            step_names=tokenizer.id_to_step,
+            desc_path=Path(desc_path),
+            n_embd=n_embd,
+        )
+        # Replace process-step rows; keep random init for special tokens
+        special_ids = {tokenizer.step_to_id[t] for t in SPECIAL_TOKENS if t in tokenizer.step_to_id}
+        with torch.no_grad():
+            for i, vec in enumerate(feat):
+                if i not in special_ids and vec.norm() > 0:
+                    model.transformer.wte.weight[i] = vec
+        print(f"[model] embedding_init=description  desc_path={desc_path}")
+
+    if category_embed:
+        from src.models.desc_embed import N_CATEGORIES
+        step_to_cat = _build_step_to_cat(tokenizer)
+        model.transformer.wte = CategoryAwareEmbedding(
+            model.transformer.wte, N_CATEGORIES, n_embd, step_to_cat
+        )
+        print(f"[model] category_embed=True  n_categories={N_CATEGORIES}")
+
+    return model
 
 
 def load_model(

@@ -59,6 +59,7 @@ def _load_dataset(cfg: dict) -> tuple[list[list[str]], list[list[str]]]:
             sequence_col=cfg.get("sequence_col", "SEQUENCE_ID"),
             step_col=cfg.get("step_col", "STEP"),
             min_length=cfg.get("min_length", 5),
+            family_prefix=cfg.get("family_prefix", False),
         )
     elif name == "dummy":
         rng = np.random.default_rng(42)
@@ -120,6 +121,10 @@ def main(config_path: str) -> None:
     train_cfg = cfg.get("training", {})
     ds_cfg    = cfg.get("dataset", {})
 
+    seed = ds_cfg.get("seed", 42)
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+
     wandb.init(
         project=os.getenv("WANDB_PROJECT", "zoh2026"),
         name=run_name,
@@ -155,6 +160,9 @@ def main(config_path: str) -> None:
         n_embd=model_cfg.get("n_embd", 256),
         n_layer=model_cfg.get("n_layer", 6),
         n_head=model_cfg.get("n_head", 8),
+        embedding_init=model_cfg.get("embedding_init"),
+        desc_path=model_cfg.get("desc_path"),
+        category_embed=model_cfg.get("category_embed", False),
     ).to(device)
 
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)

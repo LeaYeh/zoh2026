@@ -1,0 +1,31 @@
+run_name: gpt2_real_smoke_family
+
+model:
+  type: gpt2_scratch
+  max_seq_len: 256
+  n_embd: 256
+  n_layer: 6
+  n_head: 8
+
+dataset:
+  name: process_csv
+  train_path: data/raw/training_data/
+  train_files:
+    - IC_variants.csv
+    - IGBT_variants.csv
+    - MOSFET_variants.csv
+  sequence_col: SEQUENCE_ID
+  step_col: STEP
+  val_ratio: 0.1
+  min_length: 10
+  seed: 42
+  family_prefix: true
+
+training:
+  steps: 50
+  batch_size: 16
+  lr: 5.0e-4
+  warmup_steps: 5
+  grad_clip: 1.0
+  eval_every: 50
+  log_every: 10

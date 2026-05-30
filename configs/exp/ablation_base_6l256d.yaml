@@ -1,0 +1,23 @@
+run_name: ablation_base_6l256d
+
+model:
+  type: gpt2_scratch
+  max_seq_len: 64
+  n_embd: 256
+  n_layer: 6
+  n_head: 8
+
+dataset:
+  name: dummy
+  n_series: 300
+  val_ratio: 0.1
+  seed: 42
+
+training:
+  steps: 200
+  batch_size: 16
+  lr: 1.0e-3
+  warmup_steps: 20
+  grad_clip: 1.0
+  eval_every: 50
+  log_every: 10
