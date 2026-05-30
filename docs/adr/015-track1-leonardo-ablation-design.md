@@ -132,13 +132,24 @@ wandb sync ~/zoh2026/wandb/offline-run-*/
 
 ## Local Smoke Test Results (reference only)
 
-Run on 2-layer / 128-dim toy model, 200 steps, real data. **Not comparable to Leonardo.**
+Run on 2-layer / 128-dim toy model, 200 steps, 1k sequences per family, MPS (Apple Silicon).
+**Not comparable to Leonardo.** Prior numbers (0.047/0.057) were invalidated by an EOS inference
+bug fixed on 2026-05-30 — `predict_next_step` was passing `[BOS…EOS]` as input, causing
+`logits[-1]` to predict what follows EOS rather than the next process step.
 
-| Exp | best Top-1 | Trend |
-|---|---|---|
-| A random | 0.047 | Peaks at step 100, then overfits |
-| B desc | 0.057 (+21%) | Still improving at step 200 |
-| C desc + cat | 0.057 (= B) | Indistinguishable at 200 steps; needs 3,000 steps on A100 |
+| Exp | WandB run | step 100 Top-1 | step 200 Top-1 | Top-3 | MRR | Trend |
+|---|---|:---:|:---:|:---:|:---:|---|
+| A random + fam | `quick_A_rand\|fam` | 0.750 | **0.787** | 0.970 | 0.883 | Best at 200 steps; flat after step 100 |
+| B desc + fam | `quick_B_desc\|fam\|desc` | 0.707 | 0.753 | 0.960 | 0.862 | Still rising; −3.4% vs A |
+| C desc + cat + fam | `quick_C_categ\|fam\|desc\|cat` | 0.687 | 0.760 | 0.967 | 0.866 | Steepest rise (+7.3pp); −2.7% vs A |
+
+**At 200 steps: A > C > B.** C shows the steepest step-100→200 gain, consistent with
+`cat_embed` being zero-initialized (no-op at start, learns incrementally). Final ranking
+requires 3,000 steps on the full 6-layer/256-dim model — defer to Leonardo.
+
+Reference point: `gpt2_mac_local` (6L/256d, 10k seqs, no family token) reached Top-1=0.810
+at step 200 on MPS, confirming the full-size model substantially outperforms the smoke-test
+toy model. Leonardo Exp A (same full model + family token) is expected to exceed 0.810.
 
 ---
 
